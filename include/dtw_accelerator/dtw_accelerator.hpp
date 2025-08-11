@@ -42,7 +42,7 @@ namespace dtw_accelerator {
     namespace parallel {
         namespace mpi {
             using dtw_accelerator::parallel::mpi::dtw_mpi;
-
+            using dtw_accelerator::parallel::mpi::dtw_mpi_with_constraint;
         }
     }
 #endif

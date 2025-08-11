@@ -75,7 +75,11 @@ int main(int argc, char** argv) {
     }
 
     // Run the profiler tests
-    dtw_accelerator::parallel::mpi::run_dtw_profiler_tests(series_a, series_b, block_size, true);
+    dtw_accelerator::parallel::mpi::run_dtw_profiler_tests(series_a, series_b, true);
+
+    // Run the profiler tests with constraints (Sakoe-Chiba R=3)
+    dtw_accelerator::parallel::mpi::run_dtw_profiler_tests_with_constraints<dtw_accelerator::constraints::ConstraintType::SAKOE_CHIBA, 3>(
+        series_a, series_b, true);
 
     MPI_Finalize();
     return 0;

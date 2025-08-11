@@ -187,6 +187,28 @@ int main(int argc, char** argv) {
 
     }
 
+    // Test MPI with Sakoe-Chiba constraint (R=3)
+    MPI_Barrier(MPI_COMM_WORLD);
+    start_time = MPI_Wtime();
+    auto [result_mpi_sc3, path_mpi_sc3] = dtw_accelerator::parallel::mpi::dtw_mpi_with_constraint<
+            dtw_accelerator::constraints::ConstraintType::SAKOE_CHIBA, 3>(series_a, series_b);
+    end_time = MPI_Wtime();
+    double time_mpi_sc3 = (end_time - start_time) * 1000.0;
+
+    if (rank == 0) {
+        std::cout << "\nMPI Sakoe-Chiba (R=3):" << std::endl;
+        std::cout << "Cost: " << result_mpi_sc3 << std::endl;
+        std::cout << "Time: " << time_mpi_sc3 << " ms" << std::endl;
+        double baseline_time = results.empty() ? time_mpi : results[0].time_ms;
+        std::cout << "Speedup vs Sequential: " << baseline_time / time_mpi_sc3 << "x" << std::endl;
+        std::cout << "Parallel Efficiency: " << (baseline_time / time_mpi_sc3 / size) * 100 << "%" << std::endl;
+        results.push_back({"MPI Sakoe-Chiba R=3", result_mpi_sc3, time_mpi_sc3,
+                           baseline_time / time_mpi_sc3});
+
+    }
+
+
+
 
 #endif
 
