@@ -21,7 +21,7 @@ target_include_directories(dtw_accelerator INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 
 # Define preprocessor flags based on available libraries
 option(USE_OPENMP "Enable OpenMP support" OFF)
-option(USE_MPI "Enable MPI support" OFF)
+option(USE_MPI "Enable MPI support" ON)
 option(USE_CUDA "Enable CUDA support" OFF)
 
 if(USE_OPENMP)
@@ -32,8 +32,28 @@ endif()
 
 if(USE_MPI)
     find_package(MPI REQUIRED)
-    target_compile_definitions(dtw_accelerator INTERFACE USE_MPI)
-    target_link_libraries(dtw_accelerator INTERFACE MPI::MPI_CXX)
+
+    # Create MPI-enabled executable
+    add_executable(main_mpi include/dtw_accelerator/main.cpp)
+    target_compile_definitions(main_mpi PRIVATE USE_MPI)
+    target_link_libraries(main_mpi PRIVATE dtw_accelerator MPI::MPI_CXX)
+    target_include_directories(main_mpi PRIVATE ${MPI_CXX_INCLUDE_DIRS})
+
+    # MPI test executable for debugging
+    add_executable(test_mpi_dtw include/dtw_accelerator/parallel/test_mpi.cpp)
+    target_compile_definitions(test_mpi_dtw PRIVATE USE_MPI)
+    target_link_libraries(test_mpi_dtw PRIVATE dtw_accelerator MPI::MPI_CXX)
+
+    # MPI profiler executable
+    add_executable(test_mpi_profiler include/dtw_accelerator/parallel/test_mpi_profiler.cpp)
+    target_compile_definitions(test_mpi_profiler PRIVATE USE_MPI)
+    target_link_libraries(test_mpi_profiler PRIVATE dtw_accelerator MPI::MPI_CXX)
+    target_include_directories(test_mpi_profiler PRIVATE ${MPI_CXX_INCLUDE_DIRS})
+
+    message(STATUS "MPI support enabled")
+    message(STATUS "MPI C++ Compiler: ${MPI_CXX_COMPILER}")
+    message(STATUS "MPI Include Path: ${MPI_CXX_INCLUDE_DIRS}")
+    message(STATUS "MPI Libraries: ${MPI_CXX_LIBRARIES}")
 endif()
 
 if(USE_CUDA)

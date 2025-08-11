@@ -10,11 +10,11 @@
 
 // Include parallel implementations if available
 #ifdef USE_OPENMP
-#include "dwt_accelerator/parallel/openmp_dtw.hpp"
+#include "dtw_accelerator/parallel/openmp_dtw.hpp"
 #endif
 
 #ifdef USE_MPI
-#include "dwt_accelerator/parallel/mpi_dtw.hpp"
+#include "dtw_accelerator/parallel/mpi_dtw.hpp"
 #endif
 
 #ifdef USE_CUDA
@@ -38,7 +38,13 @@ namespace dtw_accelerator {
 #endif
 
 #ifdef USE_MPI
+    // Re-export MPI functions
+    namespace parallel {
+        namespace mpi {
+            using dtw_accelerator::parallel::mpi::dtw_mpi;
 
+        }
+    }
 #endif
 
 #ifdef USE_CUDA
