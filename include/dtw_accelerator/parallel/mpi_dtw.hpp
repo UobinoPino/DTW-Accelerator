@@ -57,30 +57,10 @@ namespace dtw_accelerator {
                     return D_flat[i*(m+1) + j];
                 }
             };
-            // Optimized distance computation with vectorization hints (still needs to be tested in practice)
-            inline double compute_distance_optimized(const double* a, const double* b, int dim) {
-                double sum = 0.0;
-                int i = 0;
 
-                // Vectorized loop for dimensions divisible by 4
-                for (; i <= dim - 4; i += 4) {
-                    double diff0 = a[i] - b[i];
-                    double diff1 = a[i+1] - b[i+1];
-                    double diff2 = a[i+2] - b[i+2];
-                    double diff3 = a[i+3] - b[i+3];
-                    sum += diff0*diff0 + diff1*diff1 + diff2*diff2 + diff3*diff3;
-                }
-
-                // Handle remaining dimensions
-                for (; i < dim; ++i) {
-                    double diff = a[i] - b[i];
-                    sum += diff * diff;
-                }
-
-                return std::sqrt(sum);
-            }
             // Main MPI DTW implementation
             // Optimized wavefront DTW with row-based parallelization
+            template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
             inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
                     const std::vector<std::vector<double>>& A,
                     const std::vector<std::vector<double>>& B,
@@ -186,7 +166,9 @@ namespace dtw_accelerator {
 
 #pragma omp simd
                         for (int j = 1; j <= m; ++j) {
-                            double cost = compute_distance_optimized(local_A[local_i].data(), B_local[j-1].data(), dim);
+                            double cost = distance::Metric<M>::compute(local_A[local_i].data(), B_local[j-1].data(), dim);
+
+
                             double best = std::min({prev_row[j], curr_row[j-1], prev_row[j-1]});
                             curr_row[j] = cost + best;
                         }
@@ -248,7 +230,8 @@ namespace dtw_accelerator {
             }
 
             // MPI version of DTW with constraints
-            template<constraints::ConstraintType CT, int R = 1, double S = 2.0>
+            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
             inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi_with_constraint(
                     const std::vector<std::vector<double>>& A,
                     const std::vector<std::vector<double>>& B,
@@ -361,7 +344,8 @@ namespace dtw_accelerator {
                         curr_row[0] = INF;
                         for (int j = 1; j <= m; ++j) {
                             if (local_constraint_mask[0][j-1]) {
-                                double cost = compute_distance_optimized(local_A[0].data(), B_local[j-1].data(), dim);
+                                double cost = distance::Metric<M>::compute(local_A[0].data(), B_local[j-1].data(), dim);
+
                                 double best = std::min({prev_row[j], curr_row[j-1], prev_row[j-1]});
                                 if (best != INF) {
                                     curr_row[j] = cost + best;
@@ -390,7 +374,8 @@ namespace dtw_accelerator {
                         // Only compute cells within the constraint
                         for (int j = 1; j <= m; ++j) {
                             if (local_constraint_mask[local_i][j-1]) {
-                                double cost = compute_distance_optimized(local_A[local_i].data(), B_local[j-1].data(), dim);
+                                double cost = distance::Metric<M>::compute(local_A[local_i].data(), B_local[j-1].data(), dim);
+
 
                                 double min_prev = INF;
 
@@ -469,6 +454,7 @@ namespace dtw_accelerator {
             }
 
             // MPI version of constrained DTW (used by FastDTW MPI)
+            template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
             inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained_mpi(
                     const std::vector<std::vector<double>>& A,
                     const std::vector<std::vector<double>>& B,
@@ -577,7 +563,10 @@ namespace dtw_accelerator {
                         for (int j = 1; j <= m; ++j) {
                             // Only compute if this cell is in the window
                             if (global_i - 1 < n && j - 1 < m && in_window[global_i - 1][j - 1]) {
-                                double cost = compute_distance_optimized(local_A[local_i].data(), B_local[j-1].data(), dim);
+                                //double cost = compute_distance_optimized(local_A[local_i].data(), B_local[j-1].data(), dim);
+                                double cost = distance::Metric<M>::compute(local_A[local_i].data(), B_local[j-1].data(), dim);
+
+
 
                                 double min_prev = INF;
                                 if (prev_row[j] != INF) {

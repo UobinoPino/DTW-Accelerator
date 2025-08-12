@@ -15,6 +15,7 @@ namespace dtw_accelerator {
     namespace core {
 
         //Constrained DTW that only computes cells within the window
+        template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained(
                 const std::vector<std::vector<double>>& A,
                 const std::vector<std::vector<double>>& B,
@@ -37,7 +38,7 @@ namespace dtw_accelerator {
             for (int i = 1; i <= n; ++i) {
                 for (int j = 1; j <= m; ++j) {
                     if (i-1 < n && j-1 < m && in_window[i-1][j-1]) {
-                        double cost = distance::euclidean_dist(A[i-1].data(), B[j-1].data(), dim);
+                        double cost = distance::Metric<M>::compute(A[i-1].data(), B[j-1].data(), dim);
                         double best = D[i-1][j];
                         if (D[i][j-1] < best) best = D[i][j-1];
                         if (D[i-1][j-1] < best) best = D[i-1][j-1];
@@ -66,7 +67,8 @@ namespace dtw_accelerator {
 
 
 
-        template<constraints::ConstraintType CT, int R = 1, double S = 2.0>
+        template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int, int>>> dtw_with_constraint(
                 const std::vector<std::vector<double>>& A,
                 const std::vector<std::vector<double>>& B) {
@@ -128,7 +130,7 @@ namespace dtw_accelerator {
 
             // Initialize first cell
             if (!constraint_points.empty()) {
-                D[1][1] = distance::euclidean_dist(A[0].data(), B[0].data(), dim);
+                D[1][1] = distance::Metric<M>::compute(A[0].data(), B[0].data(), dim);
             }
 
             // Process points in order of increasing sum of coordinates (i+j)
@@ -145,7 +147,7 @@ namespace dtw_accelerator {
                 int i_cost = i + 1; // +1 for cost matrix indexing
                 int j_cost = j + 1;
 
-                double cost = distance::euclidean_dist(A[i].data(), B[j].data(), dim);
+                double cost = distance::Metric<M>::compute(A[i].data(), B[j].data(), dim);
 
                 // Find minimum from three adjacent cells
                 double min_prev = INF;
@@ -208,6 +210,7 @@ namespace dtw_accelerator {
         }
 
 // Original DTW implementation (used for base case in fast_dtw)
+        template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int,int>>> dtw_cpu(
                 const std::vector<std::vector<double>>& A,
                 const std::vector<std::vector<double>>& B)
@@ -221,7 +224,7 @@ namespace dtw_accelerator {
 
             for(int i=1;i<=n;++i) {
                 for(int j=1;j<=m;++j) {
-                    double cost = distance::euclidean_dist(A[i-1].data(), B[j-1].data(), dim);
+                    double cost = distance::Metric<M>::compute(A[i-1].data(), B[j-1].data(), dim);
                     double best = D[i-1][j];
                     if(D[i][j-1] < best) best = D[i][j-1];
                     if(D[i-1][j-1] < best) best = D[i-1][j-1];
