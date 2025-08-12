@@ -20,6 +20,7 @@
 #include "../constraints.hpp"
 #include "../path_processing.hpp"
 #include "../core_dtw.hpp"
+#include "../fast_dtw.hpp"
 
 namespace dtw_accelerator {
     namespace parallel {
@@ -643,6 +644,294 @@ namespace dtw_accelerator {
 
             }
 
+            // MPI version of constrained DTW profiled (used by FastDTW MPI)
+            inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained_mpi_profiled(
+                    const std::vector<std::vector<double>>& A,
+                    const std::vector<std::vector<double>>& B,
+                    const std::vector<std::pair<int, int>>& window,
+                    MPIProfiler& profiler,
+                    MPI_Comm comm = MPI_COMM_WORLD) {
+
+                profiler.start("Constrained Init");
+
+                int rank, size;
+                MPI_Comm_rank(comm, &rank);
+                MPI_Comm_size(comm, &size);
+
+                int n = A.size();
+                int m = B.size();
+                int dim = A.empty() ? 0 : A[0].size();
+
+                // For single process, use sequential algorithm
+                if (size == 1) {
+                    profiler.stop("Constrained Init");
+                    return core::dtw_constrained(A, B, window);
+                }
+
+                const double INF = std::numeric_limits<double>::infinity();
+
+                // Broadcast dimensions
+                int dims[3] = {n, m, dim};
+                MPI_Bcast(dims, 3, MPI_INT, 0, comm);
+                n = dims[0]; m = dims[1]; dim = dims[2];
+
+                // Create window mask for efficient lookup
+                std::vector<std::vector<bool>> in_window(n, std::vector<bool>(m, false));
+                for (const auto& [i, j] : window) {
+                    if (i >= 0 && i < n && j >= 0 && j < m) {
+                        in_window[i][j] = true;
+                    }
+                }
+
+                // Calculate row distribution
+                int rows_per_proc = n / size;
+                int extra_rows = n % size;
+                int my_start_row = rank * rows_per_proc + std::min(rank, extra_rows);
+                int my_num_rows = rows_per_proc + (rank < extra_rows ? 1 : 0);
+                int my_end_row = my_start_row + my_num_rows;
+
+                profiler.stop("Constrained Init");
+
+                // Distribute data efficiently
+                profiler.start("Constrained Data Dist");
+
+                std::vector<std::vector<double>> local_A(my_num_rows, std::vector<double>(dim));
+                std::vector<std::vector<double>> B_local = B;
+
+                if (rank == 0) {
+                    // Send each process its rows
+                    for (int p = 1; p < size; ++p) {
+                        int p_start = p * rows_per_proc + std::min(p, extra_rows);
+                        int p_rows = rows_per_proc + (p < extra_rows ? 1 : 0);
+
+                        for (int i = 0; i < p_rows; ++i) {
+                            MPI_Send(A[p_start + i].data(), dim, MPI_DOUBLE, p, i, comm);
+                            profiler.trackSend(dim * sizeof(double));
+                        }
+                    }
+                    // Copy local rows
+                    for (int i = 0; i < my_num_rows; ++i) {
+                        local_A[i] = A[my_start_row + i];
+                    }
+                } else {
+                    // Receive my rows
+                    for (int i = 0; i < my_num_rows; ++i) {
+                        MPI_Recv(local_A[i].data(), dim, MPI_DOUBLE, 0, i, comm, MPI_STATUS_IGNORE);
+                        profiler.trackReceive(dim * sizeof(double));
+                    }
+                }
+
+                // Broadcast B to all processes
+                std::vector<double> B_flat(m * dim);
+                if (rank == 0) {
+                    for (int j = 0; j < m; ++j) {
+                        std::memcpy(B_flat.data() + j * dim, B[j].data(), dim * sizeof(double));
+                    }
+                }
+                MPI_Bcast(B_flat.data(), m * dim, MPI_DOUBLE, 0, comm);
+                profiler.trackReceive(m * dim * sizeof(double));
+
+                if (rank != 0) {
+                    B_local.resize(m, std::vector<double>(dim));
+                    for (int j = 0; j < m; ++j) {
+                        std::memcpy(B_local[j].data(), B_flat.data() + j * dim, dim * sizeof(double));
+                    }
+                }
+
+                profiler.stop("Constrained Data Dist");
+
+                // Row-based computation with pipelining, only computing cells in window
+                profiler.start("Constrained Compute");
+
+                std::vector<double> prev_row(m + 1, INF);
+                std::vector<double> curr_row(m + 1, INF);
+
+                // Initialize first row for process 0
+                if (rank == 0) {
+                    prev_row[0] = 0;
+                }
+
+                // Process rows with pipelining
+                for (int global_i = 1; global_i <= n; ++global_i) {
+                    if (global_i > my_start_row && global_i <= my_end_row) {
+                        int local_i = global_i - my_start_row - 1;
+
+                        // Receive previous row from previous process
+                        if (global_i == my_start_row + 1 && rank > 0) {
+                            MPI_Recv(prev_row.data(), m + 1, MPI_DOUBLE, rank - 1, global_i - 1, comm, MPI_STATUS_IGNORE);
+                            profiler.trackReceive((m + 1) * sizeof(double));
+                        }
+
+                        // Compute current row
+                        std::fill(curr_row.begin(), curr_row.end(), INF);
+                        curr_row[0] = INF;
+
+                        for (int j = 1; j <= m; ++j) {
+                            // Only compute if this cell is in the window
+                            if (global_i - 1 < n && j - 1 < m && in_window[global_i - 1][j - 1]) {
+                                double cost = compute_distance_optimized(local_A[local_i].data(), B_local[j-1].data(), dim);
+
+                                double min_prev = INF;
+                                if (prev_row[j] != INF) {
+                                    min_prev = std::min(min_prev, prev_row[j]);
+                                }
+                                if (curr_row[j-1] != INF) {
+                                    min_prev = std::min(min_prev, curr_row[j-1]);
+                                }
+                                if (prev_row[j-1] != INF) {
+                                    min_prev = std::min(min_prev, prev_row[j-1]);
+                                }
+
+                                if (min_prev != INF) {
+                                    curr_row[j] = cost + min_prev;
+                                }
+                            }
+                        }
+
+                        // Send current row to next process if needed
+                        if (global_i == my_end_row && rank < size - 1) {
+                            MPI_Send(curr_row.data(), m + 1, MPI_DOUBLE, rank + 1, global_i, comm);
+                            profiler.trackSend((m + 1) * sizeof(double));
+                        }
+
+                        // Swap rows
+                        std::swap(prev_row, curr_row);
+                    }
+                }
+
+                profiler.stop("Constrained Compute");
+
+                // Gather final result
+                profiler.start("Constrained Result");
+
+                double final_cost;
+
+                if (rank == size - 1) {
+                    final_cost = prev_row[m];
+                    if (rank > 0) {
+                        MPI_Send(&final_cost, 1, MPI_DOUBLE, 0, 0, comm);
+                        profiler.trackSend(sizeof(double));
+                    }
+                } else if (rank == 0) {
+                    MPI_Recv(&final_cost, 1, MPI_DOUBLE, size - 1, 0, comm, MPI_STATUS_IGNORE);
+                    profiler.trackReceive(sizeof(double));
+                }
+
+                // Broadcast final cost
+                MPI_Bcast(&final_cost, 1, MPI_DOUBLE, 0, comm);
+
+                // Only root performs backtracking
+                std::vector<std::pair<int, int>> path;
+                if (rank == 0) {
+                    int i = n, j = m;
+                    while (i > 0 || j > 0) {
+                        path.emplace_back(i-1, j-1);
+
+                        double d0 = (i > 0 && j > 0) ? prev_row[j-1] : INF;
+                        double d1 = (i > 0) ? prev_row[j] : INF;
+                        double d2 = (j > 0) ? curr_row[j-1] : INF;
+
+                        if (d0 <= d1 && d0 <= d2) {
+                            --i; --j;
+                        } else if (d1 < d2) {
+                            --i;
+                        } else {
+                            --j;
+                        }
+                    }
+                    std::reverse(path.begin(), path.end());
+                }
+
+                profiler.stop("Constrained Result");
+
+                return {final_cost, path};
+            }
+
+            // MPI version of FastDTW profiled
+            inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw_mpi_profiled(
+                    const std::vector<std::vector<double>>& A,
+                    const std::vector<std::vector<double>>& B,
+                    int radius,
+                    int min_size,
+                    MPIProfiler& profiler,
+                    MPI_Comm comm = MPI_COMM_WORLD) {
+
+                using namespace path;  // For downsample, expand_path, get_window
+
+                profiler.start("Total Execution");
+
+                int rank, size;
+                MPI_Comm_rank(comm, &rank);
+                MPI_Comm_size(comm, &size);
+
+                int n = A.size();
+                int m = B.size();
+                int dim = A.empty() ? 0 : A[0].size();
+
+                // For single process or small problems, use sequential algorithm
+                if (size == 1 || (n <= min_size && m <= min_size)) {
+                    profiler.stop("Total Execution");
+                    return fast::fastdtw_cpu(A, B, radius, min_size);
+                }
+
+                // Base case: if we can't downsample further
+                if (n <= 2 || m <= 2) {
+                    auto result = dtw_mpi_profiled(A, B, profiler, comm);
+                    profiler.stop("Total Execution");
+                    return result;
+                }
+
+                profiler.start("Recursive Downsampling");
+
+                // Only master handles the recursive downsampling
+                std::vector<std::pair<int, int>> window;
+                if (rank == 0) {
+                    // 1. Coarsen the time series
+                    auto A_coarse = path::downsample(A);
+                    auto B_coarse = path::downsample(B);
+
+                    // 2. Recursively compute FastDTW on the coarsened data
+                    // Use sequential version for the recursive call to avoid MPI overhead
+                    auto [cost_coarse, path_coarse] = fast::fastdtw_cpu(A_coarse, B_coarse, radius, min_size);
+
+                    // 3. Project the low-resolution path to a higher resolution
+                    auto projected_path = path::expand_path(path_coarse, n, m);
+
+                    // 4. Create a search window around the projected path
+                    window = path::get_window(projected_path, n, m, radius);
+                }
+
+                profiler.stop("Recursive Downsampling");
+
+                profiler.start("Window Broadcasting");
+
+                // Broadcast window size to all processes
+                int window_size = (rank == 0) ? window.size() : 0;
+                MPI_Bcast(&window_size, 1, MPI_INT, 0, comm);
+                profiler.trackReceive(sizeof(int));
+
+                // Broadcast the window to all processes
+                if (rank != 0) {
+                    window.resize(window_size);
+                }
+                MPI_Bcast(window.data(), window_size * 2, MPI_INT, 0, comm);
+                profiler.trackReceive(window_size * 2 * sizeof(int));
+
+                profiler.stop("Window Broadcasting");
+
+                // Now perform constrained DTW within the window using MPI parallelization
+                profiler.start("Constrained DTW");
+                auto result = dtw_constrained_mpi_profiled(A, B, window, profiler, comm);
+                profiler.stop("Constrained DTW");
+
+                profiler.stop("Total Execution");
+                return result;
+            }
+
+
+
+
+
 
 
 
@@ -820,7 +1109,99 @@ namespace dtw_accelerator {
 
                     std::cout << "===============================================" << std::endl;
                 }
+
             }
+
+            // Test runner for FastDTW
+            inline void run_fastdtw_profiler_tests(
+                    const std::vector<std::vector<double>>& A,
+                    const std::vector<std::vector<double>>& B,
+                    int radius = 1,
+                    int min_size = 100,
+                    bool save_to_file = true,
+                    MPI_Comm comm = MPI_COMM_WORLD) {
+
+                int rank;
+                MPI_Comm_rank(comm, &rank);
+
+                // Run MPI FastDTW
+                MPIProfiler mpi_profiler("MPI_FastDTW");
+                auto [cost1, path1] = fastdtw_mpi_profiled(A, B, radius, min_size, mpi_profiler, comm);
+
+                if (rank == 0) {
+                    std::cout << "\nMPI FastDTW result: " << cost1 << std::endl;
+                    std::cout << "Radius: " << radius << ", Min size: " << min_size << std::endl;
+                    mpi_profiler.reportToConsole();
+                }
+
+                if (save_to_file) {
+                    mpi_profiler.saveToFile("fastdtw_mpi_profile");
+                }
+
+                MPI_Barrier(comm);
+                if (rank == 0) std::cout << "\n----------------------------------------\n" << std::endl;
+
+                // Run sequential FastDTW
+                MPIProfiler sequential_profiler("Sequential_FastDTW");
+                sequential_profiler.start("Total Execution");
+                auto [cost_seq, path_seq] = fast::fastdtw_cpu(A, B, radius, min_size);
+                sequential_profiler.stop("Total Execution");
+
+                if (rank == 0) {
+                    std::cout << "Sequential FastDTW result: " << cost_seq << std::endl;
+                    sequential_profiler.reportToConsole();
+                }
+
+                if (save_to_file) {
+                    sequential_profiler.saveToFile("fastdtw_sequential_profile");
+                }
+
+                MPI_Barrier(comm);
+                if (rank == 0) std::cout << "\n----------------------------------------\n" << std::endl;
+
+                // Performance comparison
+                if (rank == 0) {
+                    std::cout << "\n===============================================" << std::endl;
+                    std::cout << "FASTDTW PERFORMANCE COMPARISON" << std::endl;
+                    std::cout << "===============================================" << std::endl;
+
+                    double mpi_time = 0, seq_time = 0;
+                    for (const auto& [section, entry] : mpi_profiler.timings) {
+                        if (section == "Total Execution") {
+                            mpi_time = entry.duration * 1000.0;
+                            break;
+                        }
+                    }
+
+                    for (const auto& [section, entry] : sequential_profiler.timings) {
+                        if (section == "Total Execution") {
+                            seq_time = entry.duration * 1000.0;
+                            break;
+                        }
+                    }
+
+                    std::cout << "MPI FastDTW: " << std::fixed << std::setprecision(1)
+                              << mpi_time << " ms" << std::endl;
+                    std::cout << "Sequential FastDTW: " << std::fixed << std::setprecision(1)
+                              << seq_time << " ms" << std::endl;
+
+                    if (mpi_time < seq_time) {
+                        std::cout << "The MPI FastDTW is "
+                                  << std::fixed << std::setprecision(1)
+                                  << seq_time / mpi_time
+                                  << "x faster than the Sequential FastDTW." << std::endl;
+                    } else {
+                        std::cout << "The Sequential FastDTW is "
+                                  << std::fixed << std::setprecision(1)
+                                  << mpi_time / seq_time
+                                  << "x faster than the MPI FastDTW." << std::endl;
+                    }
+
+                    std::cout << "===============================================" << std::endl;
+                }
+            }
+
+
 
         } // namespace mpi
     } // namespace parallel

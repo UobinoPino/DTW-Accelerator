@@ -207,6 +207,43 @@ int main(int argc, char** argv) {
 
     }
 
+    // Test FastDTW MPI
+    MPI_Barrier(MPI_COMM_WORLD);
+    start_time = MPI_Wtime();
+    auto [result_fastdtw_mpi, path_fastdtw_mpi] = dtw_accelerator::parallel::mpi::fastdtw_mpi(
+            series_a, series_b);
+    end_time = MPI_Wtime();
+    double time_fastdtw_mpi = (end_time - start_time) * 1000.0;
+    if (rank == 0) {
+        std::cout << "\nFastDTW MPI:" << std::endl;
+        std::cout << "Cost: " << result_fastdtw_mpi << std::endl;
+        std::cout << "Time: " << time_fastdtw_mpi << " ms" << std::endl;
+        double baseline_time = results.empty() ? time_mpi : results[0].time_ms;
+        std::cout << "Speedup vs Sequential: " << baseline_time / time_fastdtw_mpi << "x" << std::endl;
+        std::cout << "Parallel Efficiency: " << (baseline_time / time_fastdtw_mpi / size) * 100 << "%" << std::endl;
+        results.push_back({"FastDTW MPI", result_fastdtw_mpi, time_fastdtw_mpi, baseline_time / time_fastdtw_mpi});
+    }
+
+    // Test FastDTW MPI with radius=3
+    MPI_Barrier(MPI_COMM_WORLD);
+    start_time = MPI_Wtime();
+    auto [result_fastdtw_mpi_r3, path_fastdtw_mpi_r3] = dtw_accelerator::parallel::mpi::fastdtw_mpi(
+            series_a, series_b, 3);
+    end_time = MPI_Wtime();
+    double time_fastdtw_mpi_r3 = (end_time - start_time) * 1000.0;
+    if (rank == 0) {
+        std::cout << "\nFastDTW MPI with radius=3:" << std::endl;
+        std::cout << "Cost: " << result_fastdtw_mpi_r3 << std::endl;
+        std::cout << "Time: " << time_fastdtw_mpi_r3 << " ms" << std::endl;
+        double baseline_time = results.empty() ? time_mpi : results[0].time_ms;
+        std::cout << "Speedup vs Sequential: " << baseline_time / time_fastdtw_mpi_r3 << "x" << std::endl;
+        std::cout << "Parallel Efficiency: " << (baseline_time / time_fastdtw_mpi_r3 / size) * 100 << "%" << std::endl;
+        results.push_back({"FastDTW MPI R=3", result_fastdtw_mpi_r3, time_fastdtw_mpi_r3,
+                           baseline_time / time_fastdtw_mpi_r3});
+    }
+
+
+
 
 
 

@@ -43,6 +43,10 @@ namespace dtw_accelerator {
         namespace mpi {
             using dtw_accelerator::parallel::mpi::dtw_mpi;
             using dtw_accelerator::parallel::mpi::dtw_mpi_with_constraint;
+
+            using dtw_accelerator::parallel::mpi::fastdtw_mpi;
+            using dtw_accelerator::parallel::mpi::dtw_constrained_mpi;
+
         }
     }
 #endif

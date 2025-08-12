@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
     int sequence_length = 10000;
     int dimensions = 2;
     int block_size = 64;
+    int fastdtw_radius = 3;
+    int fastdtw_min_size = 100;
 
     // Parse command line arguments if provided
     if (argc > 1) sequence_length = std::atoi(argv[1]);
@@ -76,10 +78,60 @@ int main(int argc, char** argv) {
 
     // Run the profiler tests
     dtw_accelerator::parallel::mpi::run_dtw_profiler_tests(series_a, series_b, true);
+    MPI_Barrier(MPI_COMM_WORLD);
+
+
+
 
     // Run the profiler tests with constraints (Sakoe-Chiba R=3)
+    if (rank == 0) {
+        std::cout << "\n=======================================" << std::endl;
+        std::cout << "TEST 2: DTW with Sakoe-Chiba Constraint (R=3)" << std::endl;
+        std::cout << "=======================================" << std::endl;
+    }
     dtw_accelerator::parallel::mpi::run_dtw_profiler_tests_with_constraints<dtw_accelerator::constraints::ConstraintType::SAKOE_CHIBA, 3>(
         series_a, series_b, true);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        std::cout << "\n=======================================" << std::endl;
+        std::cout << "TEST 3: FastDTW (Radius=" << fastdtw_radius << ")" << std::endl;
+        std::cout << "=======================================" << std::endl;
+    }
+    // Run the FastDTW profiler tests
+    dtw_accelerator::parallel::mpi::run_fastdtw_profiler_tests(
+            series_a, series_b, fastdtw_radius, fastdtw_min_size, true);
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    // Test different FastDTW radii for comparison
+    if (rank == 0) {
+        std::cout << "\n=======================================" << std::endl;
+        std::cout << "TEST 4: FastDTW Radius Comparison" << std::endl;
+        std::cout << "=======================================" << std::endl;
+    }
+
+    std::vector<int> test_radii = {1, 3, 5, 10};
+    for (int radius : test_radii) {
+        if (rank == 0) {
+            std::cout << "\n--- Testing FastDTW with radius=" << radius << " ---" << std::endl;
+        }
+
+        dtw_accelerator::parallel::mpi::run_fastdtw_profiler_tests(
+                series_a, series_b, radius, fastdtw_min_size, true);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+
+    // Final summary
+    if (rank == 0) {
+        std::cout << "\n=======================================" << std::endl;
+        std::cout << "PROFILING COMPLETE" << std::endl;
+        std::cout << "=======================================" << std::endl;
+        std::cout << "Profile files have been saved to disk." << std::endl;
+        std::cout << "Look for *_profile_rank*.csv files in the current directory." << std::endl;
+    }
 
     MPI_Finalize();
     return 0;
