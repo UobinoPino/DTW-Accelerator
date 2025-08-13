@@ -5,6 +5,7 @@
 #include "distance_metrics.hpp"
 #include "constraints.hpp"
 #include "path_processing.hpp"
+#include "dtw_utils.hpp"
 #include "core_dtw.hpp"
 #include "fast_dtw.hpp"
 
@@ -34,6 +35,16 @@ namespace dtw_accelerator {
     using fast::fastdtw_cpu;
 
 #ifdef USE_OPENMP
+    // Re-export OpenMP functions
+    namespace parallel {
+        namespace omp {
+            using dtw_accelerator::parallel::omp::dtw_omp;
+            using dtw_accelerator::parallel::omp::dtw_omp_with_constraint;
+            using dtw_accelerator::parallel::omp::dtw_constrained_omp;
+            using dtw_accelerator::parallel::omp::fastdtw_omp;
+            using dtw_accelerator::parallel::omp::dtw_omp_blocked;
+        }
+    }
 
 #endif
 
