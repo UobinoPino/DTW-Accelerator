@@ -21,13 +21,33 @@ target_include_directories(dtw_accelerator INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 
 # Define preprocessor flags based on available libraries
 option(USE_OPENMP "Enable OpenMP support" OFF)
-option(USE_MPI "Enable MPI support" ON)
+option(USE_MPI "Enable MPI support" OFF)
 option(USE_CUDA "Enable CUDA support" OFF)
 
 if(USE_OPENMP)
     find_package(OpenMP REQUIRED)
-    target_compile_definitions(dtw_accelerator INTERFACE USE_OPENMP)
-    target_link_libraries(dtw_accelerator INTERFACE OpenMP::OpenMP_CXX)
+    if(OpenMP_CXX_FOUND)
+        target_compile_definitions(dtw_accelerator INTERFACE USE_OPENMP)
+        target_link_libraries(dtw_accelerator INTERFACE OpenMP::OpenMP_CXX)
+
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+        message(STATUS "OpenMP support enabled")
+        message(STATUS "OpenMP version: ${OpenMP_CXX_VERSION}")
+        message(STATUS "OpenMP flags: ${OpenMP_CXX_FLAGS}")
+
+        # OpenMP-only executable
+        add_executable(main_openmp include/dtw_accelerator/main.cpp)
+        target_compile_definitions(main_openmp PRIVATE USE_OPENMP)
+        target_link_libraries(main_openmp PRIVATE dtw_accelerator OpenMP::OpenMP_CXX)
+
+        # OpenMP profiler test executable
+        add_executable(test_openmp_profiler include/dtw_accelerator/parallel/test_openmp_profiler.cpp)
+        target_compile_definitions(test_openmp_profiler PRIVATE USE_OPENMP)
+        target_link_libraries(test_openmp_profiler PRIVATE dtw_accelerator OpenMP::OpenMP_CXX)
+    else()
+        message(WARNING "OpenMP not found. Disabling OpenMP support.")
+        set(USE_OPENMP OFF)
+    endif()
 endif()
 
 if(USE_MPI)
@@ -65,3 +85,15 @@ endif()
 # Example executable
 add_executable(main include/dtw_accelerator/main.cpp)
 target_link_libraries(main PRIVATE dtw_accelerator)
+
+# Print build configuration
+message(STATUS "====================================")
+message(STATUS "DTW Accelerator Build Configuration:")
+message(STATUS "------------------------------------")
+message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Core DTW Profiler: ENABLED")
+message(STATUS "OpenMP Support: ${USE_OPENMP}")
+message(STATUS "MPI Support: ${USE_MPI}")
+message(STATUS "CUDA Support: ${USE_CUDA}")
+message(STATUS "====================================")

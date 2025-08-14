@@ -15,6 +15,78 @@
 namespace dtw_accelerator {
     namespace core {
 
+        // DTW implementation (used for base case in fast_dtw)
+        template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
+        inline std::pair<double, std::vector<std::pair<int,int>>> dtw_cpu(
+                const std::vector<std::vector<double>>& A,
+                const std::vector<std::vector<double>>& B)
+        {
+            int n = (int)A.size(), m = (int)B.size(), dim = (int)A[0].size();
+            const double INF = std::numeric_limits<double>::infinity();
+
+            std::vector<std::vector<double>> D(n+1, std::vector<double>(m+1, INF));
+            utils::init_dtw_matrix(D);
+
+            for(int i=1;i<=n;++i) {
+                for(int j=1;j<=m;++j) {
+                    D[i][j] = utils::compute_cell_cost<M>(
+                            A[i-1].data(), B[j-1].data(), dim,
+                            D[i-1][j-1], D[i][j-1], D[i-1][j]
+                    );
+                }
+            }
+
+            auto path = utils::backtrack_path(D);
+            return { D[n][m], path };
+        }
+
+
+        template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
+        std::pair<double, std::vector<std::pair<int,int>>> dtw_blocked(
+                const std::vector<std::vector<double>>& A,
+                const std::vector<std::vector<double>>& B,
+                int block_size = 64,
+                int num_threads = 0) {
+
+            int n = A.size();
+            int m = B.size();
+            int dim = A.empty() ? 0 : A[0].size();
+            const double INF = std::numeric_limits<double>::infinity();
+            std::vector<std::vector<double>> D(n + 1, std::vector<double>(m + 1, INF));
+            dtw_accelerator::utils::init_dtw_matrix(D);
+
+            int n_blocks = (n + block_size - 1) / block_size;
+            int m_blocks = (m + block_size - 1) / block_size;
+
+            for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
+                int start_bi = std::max(0, wave - m_blocks + 1);
+                int end_bi = std::min(n_blocks - 1, wave);
+
+                for (int bi = start_bi; bi <= end_bi; ++bi) {
+                    int bj = wave - bi;
+                    if (bj >= 0 && bj < m_blocks) {
+                        int i_start = bi * block_size + 1;
+                        int i_end = std::min((bi + 1) * block_size, n);
+                        int j_start = bj * block_size + 1;
+                        int j_end = std::min((bj + 1) * block_size, m);
+
+                        for (int i = i_start; i <= i_end; ++i) {
+                            for (int j = j_start; j <= j_end; ++j) {
+                                D[i][j] = dtw_accelerator::utils::compute_cell_cost<M>(
+                                        A[i-1].data(), B[j-1].data(), dim,
+                                        D[i-1][j-1], D[i][j-1], D[i-1][j]
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            auto path = utils::backtrack_path(D);
+
+            return {D[n][m], path};
+        }
+
         //Constrained DTW that only computes cells within the window
         template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained(
@@ -117,31 +189,6 @@ namespace dtw_accelerator {
             // Backtrack to find the path
             auto path = utils::backtrack_path(D);
             return {D[n][m], path};
-        }
-
-        // DTW implementation (used for base case in fast_dtw)
-        template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
-        inline std::pair<double, std::vector<std::pair<int,int>>> dtw_cpu(
-                const std::vector<std::vector<double>>& A,
-                const std::vector<std::vector<double>>& B)
-        {
-            int n = (int)A.size(), m = (int)B.size(), dim = (int)A[0].size();
-            const double INF = std::numeric_limits<double>::infinity();
-
-            std::vector<std::vector<double>> D(n+1, std::vector<double>(m+1, INF));
-            utils::init_dtw_matrix(D);
-
-            for(int i=1;i<=n;++i) {
-                for(int j=1;j<=m;++j) {
-                    D[i][j] = utils::compute_cell_cost<M>(
-                            A[i-1].data(), B[j-1].data(), dim,
-                            D[i-1][j-1], D[i][j-1], D[i-1][j]
-                    );
-                }
-            }
-
-            auto path = utils::backtrack_path(D);
-            return { D[n][m], path };
         }
 
     } // namespace core

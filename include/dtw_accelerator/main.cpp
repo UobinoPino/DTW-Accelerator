@@ -4,6 +4,13 @@
 #include <chrono>
 #include <iomanip>
 
+
+
+#ifdef USE_OPENMP
+#include <omp.h>
+#include "dtw_accelerator/parallel/openmp_dtw.hpp"
+#endif
+
 #ifdef USE_MPI
 #include <mpi.h>
 #include "dtw_accelerator/parallel/mpi_dtw.hpp"
@@ -144,6 +151,82 @@ int main(int argc, char** argv) {
 
         results.push_back({"FastDTW R=3", cost_fastdtw_r3, time_fastdtw_r3, time_dtw / time_fastdtw_r3});
     }
+#ifdef USE_OPENMP
+    // OpenMP Parallel versions (only on rank 0)
+    if (rank == 0) {
+        std::cout << "\n=== OpenMP Parallel DTW ===" << std::endl;
+        int max_threads = omp_get_max_threads();
+        std::cout << "Running with " << max_threads << " threads..." << std::endl;
+
+        // Test standard DTW
+        auto [result_omp, time_omp] = measure_time([&]() {
+            return dtw_accelerator::parallel::omp::dtw_omp(series_a, series_b, 20);
+        });
+        double sequential_time = results.empty() ? 0.0 : results[0].time_ms;
+        std::cout << "Sequential DTW time: " << sequential_time << " ms";
+
+        auto& [cost_omp, path_omp] = result_omp;
+        std::cout << "OpenMP Wavefront DTW:" << std::endl;
+        std::cout << "Cost: " << cost_omp << std::endl;
+        std::cout << "Time: " << time_omp << " ms" << std::endl;
+        std::cout << "Speedup vs Sequential: " << sequential_time / time_omp << "x" << std::endl;
+        std::cout << "Parallel Efficiency: " << (sequential_time / time_omp / max_threads) * 100 << "%" << std::endl;
+
+        results.push_back({"OpenMP Wavefront", cost_omp, time_omp, sequential_time / time_omp});
+
+        // Test blocked DTW
+        auto [result_omp_blocked, time_omp_blocked] = measure_time([&]() {
+            return dtw_accelerator::parallel::omp::dtw_omp_blocked(series_a, series_b, 64);
+        });
+        auto& [cost_omp_blocked, path_omp_blocked] = result_omp_blocked;
+        std::cout << "\nOpenMP Blocked DTW:" << std::endl;
+        std::cout << "Cost: " << cost_omp_blocked << std::endl;
+        std::cout << "Time: " << time_omp_blocked << " ms" << std::endl;
+        std::cout << "Speedup vs Sequential: " << sequential_time / time_omp_blocked << "x" << std::endl;
+
+        results.push_back({"OpenMP Blocked", cost_omp_blocked, time_omp_blocked, sequential_time / time_omp_blocked});
+
+        // Test with Sakoe-Chiba constraint
+        auto [result_omp_sc3, time_omp_sc3] = measure_time([&]() {
+            return dtw_accelerator::parallel::omp::dtw_omp_with_constraint<
+                    dtw_accelerator::constraints::ConstraintType::SAKOE_CHIBA, 3>(series_a, series_b);
+        });
+        auto& [cost_omp_sc3, path_omp_sc3] = result_omp_sc3;
+        std::cout << "\nOpenMP Sakoe-Chiba (R=3):" << std::endl;
+        std::cout << "Cost: " << cost_omp_sc3 << std::endl;
+        std::cout << "Time: " << time_omp_sc3 << " ms" << std::endl;
+        std::cout << "Speedup vs Sequential: " << sequential_time / time_omp_sc3 << "x" << std::endl;
+
+        results.push_back({"OpenMP Sakoe-Chiba R=3", cost_omp_sc3, time_omp_sc3, sequential_time / time_omp_sc3});
+
+        // Test FastDTW
+        auto [result_fastdtw_omp, time_fastdtw_omp] = measure_time([&]() {
+            return dtw_accelerator::parallel::omp::fastdtw_omp(series_a, series_b);
+        });
+        auto& [cost_fastdtw_omp, path_fastdtw_omp] = result_fastdtw_omp;
+        std::cout << "\nFastDTW OpenMP:" << std::endl;
+        std::cout << "Cost: " << cost_fastdtw_omp << std::endl;
+        std::cout << "Time: " << time_fastdtw_omp << " ms" << std::endl;
+        std::cout << "Speedup vs Sequential: " << sequential_time / time_fastdtw_omp << "x" << std::endl;
+
+        results.push_back({"FastDTW OpenMP", cost_fastdtw_omp, time_fastdtw_omp, sequential_time / time_fastdtw_omp});
+
+        // Test FastDTW with radius=3
+        auto [result_fastdtw_omp_r3, time_fastdtw_omp_r3] = measure_time([&]() {
+            return dtw_accelerator::parallel::omp::fastdtw_omp(series_a, series_b, 3);
+        });
+        auto& [cost_fastdtw_omp_r3, path_fastdtw_omp_r3] = result_fastdtw_omp_r3;
+        std::cout << "\nFastDTW OpenMP with radius=3:" << std::endl;
+        std::cout << "Cost: " << cost_fastdtw_omp_r3 << std::endl;
+        std::cout << "Time: " << time_fastdtw_omp_r3 << " ms" << std::endl;
+        std::cout << "Speedup vs Sequential: " << sequential_time / time_fastdtw_omp_r3 << "x" << std::endl;
+
+        results.push_back({"FastDTW OpenMP R=3", cost_fastdtw_omp_r3, time_fastdtw_omp_r3, sequential_time / time_fastdtw_omp_r3});
+
+        std::cout << "----------------------------------------------\n";
+    }
+
+#endif
 
 #ifdef USE_MPI
     // MPI Parallel versions
@@ -241,10 +324,6 @@ int main(int argc, char** argv) {
         results.push_back({"FastDTW MPI R=3", result_fastdtw_mpi_r3, time_fastdtw_mpi_r3,
                            baseline_time / time_fastdtw_mpi_r3});
     }
-
-
-
-
 
 
 #endif
