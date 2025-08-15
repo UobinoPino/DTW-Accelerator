@@ -6,6 +6,7 @@
 #include <limits>
 #include <algorithm>
 #include "distance_metrics.hpp"
+#include <omp.h>
 
 namespace dtw_accelerator {
     namespace utils {
@@ -86,7 +87,9 @@ namespace dtw_accelerator {
                 int n, int m) {
 
             std::vector<std::vector<bool>> in_window(n, std::vector<bool>(m, false));
-            for (const auto& [i, j] : window) {
+            #pragma omp parallel for
+            for (int idx = 0; idx < window.size(); ++idx) {
+                const auto& [i, j] = window[idx];
                 if (i >= 0 && i < n && j >= 0 && j < m) {
                     in_window[i][j] = true;
                 }
@@ -100,7 +103,7 @@ namespace dtw_accelerator {
             using namespace constraints;
 
             std::vector<std::vector<bool>> mask(n, std::vector<bool>(m, false));
-
+            #pragma omp parallel for collapse(2)
             for (int i = 0; i < n; ++i) {
                 for (int j = 0; j < m; ++j) {
                     if constexpr (CT == ConstraintType::NONE) {
