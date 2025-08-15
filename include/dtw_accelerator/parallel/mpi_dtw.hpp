@@ -6,700 +6,195 @@
 #include <limits>
 #include <algorithm>
 #include <mpi.h>
-#include <iostream>
+#include <omp.h>
 #include <cmath>
-#include <unordered_map>
-#include <string>
-#include <iomanip>
-#include <fstream>
-#include <sstream>
 #include <cstring>
-#include <immintrin.h>
 
 #include "../distance_metrics.hpp"
 #include "../constraints.hpp"
 #include "../path_processing.hpp"
 #include "../core_dtw.hpp"
 #include "../fast_dtw.hpp"
+#include "../dtw_utils.hpp"
+#include "../dtw_accelerator.hpp"
+#include "openmp_dtw.hpp"
 
 namespace dtw_accelerator {
     namespace parallel {
         namespace mpi {
 
-            // Optimized DTW data structure
-            struct DTWData {
-                int n, m, dim;
-                std::vector<std::vector<double>> A;
-                std::vector<std::vector<double>> B;
-                std::vector<double> D_flat;
-
-                std::vector<double> prev_row;
-                std::vector<double> curr_row;
-
-                DTWData(int n_, int m_, int dim_, bool full_matrix = false)
-                        : n(n_), m(m_), dim(dim_) {
-                    if (full_matrix) {
-                        D_flat.resize((n+1)*(m+1), std::numeric_limits<double>::infinity());
-                        D_flat[0] = 0;
-                    } else {
-                        // For row-based computation
-                        prev_row.resize(m+1, std::numeric_limits<double>::infinity());
-                        curr_row.resize(m+1, std::numeric_limits<double>::infinity());
-                        prev_row[0] = 0;
-                    }
-                }
-
-                inline double& D(int i, int j) {
-                    return D_flat[i*(m+1) + j];
-                }
-
-                inline const double& D(int i, int j) const {
-                    return D_flat[i*(m+1) + j];
-                }
-            };
-
-            // Main MPI DTW implementation
-            // Optimized wavefront DTW with row-based parallelization
+            // MPI DTW implementation
             template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
             inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
                     const std::vector<std::vector<double>>& A,
                     const std::vector<std::vector<double>>& B,
+                    int block_size = 64,
+                    int omp_threads_per_process = 0,
                     MPI_Comm comm = MPI_COMM_WORLD) {
 
                 int rank, size;
                 MPI_Comm_rank(comm, &rank);
                 MPI_Comm_size(comm, &size);
 
-                int n = A.size();
-                int m = B.size();
-                int dim = A.empty() ? 0 : A[0].size();
-
-                // For single process, use sequential algorithm
-                if (size == 1) {
-                    return core::dtw_cpu(A, B);
+                if (omp_threads_per_process > 0) {
+                    omp_set_num_threads(omp_threads_per_process);
                 }
-
-                // Broadcast dimensions
-                int dims[3] = {n, m, dim};
-                MPI_Bcast(dims, 3, MPI_INT, 0, comm);
-                n = dims[0]; m = dims[1]; dim = dims[2];
-
-                // Calculate row distribution
-                int rows_per_proc = n / size;
-                int extra_rows = n % size;
-                int my_start_row = rank * rows_per_proc + std::min(rank, extra_rows);
-                int my_num_rows = rows_per_proc + (rank < extra_rows ? 1 : 0);
-                int my_end_row = my_start_row + my_num_rows;
-
-
-                // Distribute data efficiently
-
-                // Only distribute the rows each process needs
-                std::vector<std::vector<double>> local_A(my_num_rows, std::vector<double>(dim));
-                std::vector<std::vector<double>> B_local = B;
-
-                if (rank == 0) {
-                    // Send each process its rows
-                    for (int p = 1; p < size; ++p) {
-                        int p_start = p * rows_per_proc + std::min(p, extra_rows);
-                        int p_rows = rows_per_proc + (p < extra_rows ? 1 : 0);
-
-                        for (int i = 0; i < p_rows; ++i) {
-                            MPI_Send(A[p_start + i].data(), dim, MPI_DOUBLE, p, i, comm);
-                        }
-                    }
-                    // Copy local rows
-                    for (int i = 0; i < my_num_rows; ++i) {
-                        local_A[i] = A[my_start_row + i];
-                    }
-                } else {
-                    // Receive my rows
-                    for (int i = 0; i < my_num_rows; ++i) {
-                        MPI_Recv(local_A[i].data(), dim, MPI_DOUBLE, 0, i, comm, MPI_STATUS_IGNORE);
-                    }
-                }
-
-                // Broadcast B to all processes
-                std::vector<double> B_flat(m * dim);
-                if (rank == 0) {
-                    for (int j = 0; j < m; ++j) {
-                        std::memcpy(B_flat.data() + j * dim, B[j].data(), dim * sizeof(double));
-                    }
-                }
-                MPI_Bcast(B_flat.data(), m * dim, MPI_DOUBLE, 0, comm);
-
-                if (rank != 0) {
-                    B_local.resize(m, std::vector<double>(dim));
-                    for (int j = 0; j < m; ++j) {
-                        std::memcpy(B_local[j].data(), B_flat.data() + j * dim, dim * sizeof(double));
-                    }
-                }
-
-
-                // Row-based computation with pipelining
-
-                // Each process maintains two rows: previous and current
-                std::vector<double> prev_row(m + 1, std::numeric_limits<double>::infinity());
-                std::vector<double> curr_row(m + 1, std::numeric_limits<double>::infinity());
-
-                // Initialize first row for process 0
-                if (rank == 0) {
-                    prev_row[0] = 0;
-                    for (int j = 1; j <= m; ++j) {
-                        prev_row[j] = std::numeric_limits<double>::infinity();
-                    }
-                }
-
-                // Process rows with pipelining
-                for (int global_i = 1; global_i <= n; ++global_i) {
-
-                    if (global_i > my_start_row && global_i <= my_end_row) {
-                        int local_i = global_i - my_start_row - 1;
-
-                        // Receive previous row from previous process
-                        if (global_i == my_start_row + 1 && rank > 0) {
-                            MPI_Recv(prev_row.data(), m + 1, MPI_DOUBLE, rank - 1, global_i - 1, comm, MPI_STATUS_IGNORE);
-                        }
-
-                        // Compute current row
-                        curr_row[0] = std::numeric_limits<double>::infinity();
-
-#pragma omp simd
-                        for (int j = 1; j <= m; ++j) {
-                            double cost = distance::Metric<M>::compute(local_A[local_i].data(), B_local[j-1].data(), dim);
-
-
-                            double best = std::min({prev_row[j], curr_row[j-1], prev_row[j-1]});
-                            curr_row[j] = cost + best;
-                        }
-
-                        // Send current row to next process if needed
-                        if (global_i == my_end_row && rank < size - 1) {
-                            MPI_Send(curr_row.data(), m + 1, MPI_DOUBLE, rank + 1, global_i, comm);
-                        }
-
-                        // Swap rows
-                        std::swap(prev_row, curr_row);
-                    }
-                }
-
-
-                // Gather final result
-                double final_cost;
-
-                if (rank == size - 1) {
-                    final_cost = prev_row[m];
-                    if (rank > 0) {
-                        MPI_Send(&final_cost, 1, MPI_DOUBLE, 0, 0, comm);
-                    }
-                } else if (rank == 0) {
-                    MPI_Recv(&final_cost, 1, MPI_DOUBLE, size - 1, 0, comm, MPI_STATUS_IGNORE);
-                }
-
-                // Broadcast final cost
-                MPI_Bcast(&final_cost, 1, MPI_DOUBLE, 0, comm);
-
-
-                // Only root performs backtracking
-                std::vector<std::pair<int, int>> path;
-                if (rank == 0) {
-
-                    // Backtracking from final cost
-                    int i = n, j = m;
-                    const double INF = std::numeric_limits<double>::infinity();
-                    while (i > 0 || j > 0) {
-                        path.emplace_back(i-1, j-1);
-
-                        double d0 = (i > 0 && j > 0) ? prev_row[j-1] : INF;
-                        double d1 = (i > 0) ? prev_row[j] : INF;
-                        double d2 = (j > 0) ? curr_row[j-1] : INF;
-
-                        if (d0 <= d1 && d0 <= d2) {
-                            --i; --j;
-                        } else if (d1 < d2) {
-                            --i;
-                        } else {
-                            --j;
-                        }
-                    }
-                    std::reverse(path.begin(), path.end());
-                  //  std::cout << "Final cost: " << final_cost << std::endl;
-                }
-
-                return {final_cost, path};
-            }
-
-            // MPI version of DTW with constraints
-            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
-                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
-            inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi_with_constraint(
-                    const std::vector<std::vector<double>>& A,
-                    const std::vector<std::vector<double>>& B,
-                    MPI_Comm comm = MPI_COMM_WORLD) {
-
-                using namespace constraints;
-
-                int rank, size;
-                MPI_Comm_rank(comm, &rank);
-                MPI_Comm_size(comm, &size);
 
                 int n = A.size();
                 int m = B.size();
                 int dim = A.empty() ? 0 : A[0].size();
 
-                // For single process, use sequential algorithm
                 if (size == 1) {
-                    return core::dtw_with_constraint<CT, R, S>(A, B);
-                }
+                    auto result = parallel::omp::dtw_omp_blocked<M>(A, B, block_size, omp_threads_per_process);
+                    return result;
 
-                // Broadcast dimensions
-                int dims[3] = {n, m, dim};
-                MPI_Bcast(dims, 3, MPI_INT, 0, comm);
-                n = dims[0]; m = dims[1]; dim = dims[2];
-
-                const double INF = std::numeric_limits<double>::infinity();
-
-                // Calculate row distribution
-                int rows_per_proc = n / size;
-                int extra_rows = n % size;
-                int my_start_row = rank * rows_per_proc + std::min(rank, extra_rows);
-                int my_num_rows = rows_per_proc + (rank < extra_rows ? 1 : 0);
-                int my_end_row = my_start_row + my_num_rows;
-
-                // Distribute data efficiently
-                std::vector<std::vector<double>> local_A(my_num_rows, std::vector<double>(dim));
-                std::vector<std::vector<double>> B_local = B;
-
-                if (rank == 0) {
-                    // Send each process its rows
-                    for (int p = 1; p < size; ++p) {
-                        int p_start = p * rows_per_proc + std::min(p, extra_rows);
-                        int p_rows = rows_per_proc + (p < extra_rows ? 1 : 0);
-
-                        for (int i = 0; i < p_rows; ++i) {
-                            MPI_Send(A[p_start + i].data(), dim, MPI_DOUBLE, p, i, comm);
-                        }
-                    }
-                    // Copy local rows
-                    for (int i = 0; i < my_num_rows; ++i) {
-                        local_A[i] = A[my_start_row + i];
-                    }
-                } else {
-                    // Receive my rows
-                    for (int i = 0; i < my_num_rows; ++i) {
-                        MPI_Recv(local_A[i].data(), dim, MPI_DOUBLE, 0, i, comm, MPI_STATUS_IGNORE);
-                    }
-                }
-
-                // Broadcast B to all processes
-                std::vector<double> B_flat(m * dim);
-                if (rank == 0) {
-                    for (int j = 0; j < m; ++j) {
-                        std::memcpy(B_flat.data() + j * dim, B[j].data(), dim * sizeof(double));
-                    }
-                }
-                MPI_Bcast(B_flat.data(), m * dim, MPI_DOUBLE, 0, comm);
-
-                if (rank != 0) {
-                    B_local.resize(m, std::vector<double>(dim));
-                    for (int j = 0; j < m; ++j) {
-                        std::memcpy(B_local[j].data(), B_flat.data() + j * dim, dim * sizeof(double));
-                    }
-                }
-
-                // Pre-compute constraint mask for each row
-                // Each process computes valid columns for its rows
-                std::vector<std::vector<bool>> local_constraint_mask(my_num_rows, std::vector<bool>(m, false));
-                std::vector<int> valid_cols_per_row(my_num_rows, 0);
-
-                for (int local_i = 0; local_i < my_num_rows; ++local_i) {
-                    int global_i = my_start_row + local_i;
-                    for (int j = 0; j < m; ++j) {
-                        bool in_constraint = false;
-
-                        if constexpr (CT == ConstraintType::NONE) {
-                            in_constraint = true;
-                        }
-                        else if constexpr (CT == ConstraintType::SAKOE_CHIBA) {
-                            in_constraint = within_sakoe_chiba_band<R>(global_i, j, n, m);
-                        }
-                        else if constexpr (CT == ConstraintType::ITAKURA) {
-                            in_constraint = within_itakura_parallelogram<S>(global_i, j, n, m);
-                        }
-
-                        local_constraint_mask[local_i][j] = in_constraint;
-                        if (in_constraint) valid_cols_per_row[local_i]++;
-                    }
-                }
-
-                // Row-based computation with pipelining and constraints
-                std::vector<double> prev_row(m + 1, INF);
-                std::vector<double> curr_row(m + 1, INF);
-
-                // Initialize first row for process 0
-                if (rank == 0) {
-                    prev_row[0] = 0;
-                    // Special case for first row computation
-                    if (my_num_rows > 0) {
-                        curr_row[0] = INF;
-                        for (int j = 1; j <= m; ++j) {
-                            if (local_constraint_mask[0][j-1]) {
-                                double cost = distance::Metric<M>::compute(local_A[0].data(), B_local[j-1].data(), dim);
-
-                                double best = std::min({prev_row[j], curr_row[j-1], prev_row[j-1]});
-                                if (best != INF) {
-                                    curr_row[j] = cost + best;
-                                }
-                            }
-                        }
-                        std::swap(prev_row, curr_row);
-                    }
-                }
-
-                // Process rows with pipelining
-                for (int global_i = (rank == 0 ? 2 : 1); global_i <= n; ++global_i) {
-
-                    if (global_i > my_start_row && global_i <= my_end_row) {
-                        int local_i = global_i - my_start_row - 1;
-
-                        // Receive previous row from previous process
-                        if (global_i == my_start_row + 1 && rank > 0) {
-                            MPI_Recv(prev_row.data(), m + 1, MPI_DOUBLE, rank - 1, global_i - 1, comm, MPI_STATUS_IGNORE);
-                        }
-
-                        // Compute current row with constraint checking
-                        std::fill(curr_row.begin(), curr_row.end(), INF);
-                        curr_row[0] = INF;
-
-                        // Only compute cells within the constraint
-                        for (int j = 1; j <= m; ++j) {
-                            if (local_constraint_mask[local_i][j-1]) {
-                                double cost = distance::Metric<M>::compute(local_A[local_i].data(), B_local[j-1].data(), dim);
-
-
-                                double min_prev = INF;
-
-                                // Check all three predecessors
-                                if (prev_row[j] != INF) {
-                                    min_prev = std::min(min_prev, prev_row[j]);
-                                }
-                                if (curr_row[j-1] != INF) {
-                                    min_prev = std::min(min_prev, curr_row[j-1]);
-                                }
-                                if (prev_row[j-1] != INF) {
-                                    min_prev = std::min(min_prev, prev_row[j-1]);
-                                }
-
-                                if (min_prev != INF) {
-                                    curr_row[j] = cost + min_prev;
-                                }
-                            }
-                        }
-
-                        // Send current row to next process if needed
-                        if (global_i == my_end_row && rank < size - 1) {
-                            MPI_Send(curr_row.data(), m + 1, MPI_DOUBLE, rank + 1, global_i, comm);
-                        }
-
-                        // Swap rows
-                        std::swap(prev_row, curr_row);
-                    }
-                }
-
-                // Gather final result
-                double final_cost;
-
-                if (rank == size - 1) {
-                    final_cost = prev_row[m];
-                    if (rank > 0) {
-                        MPI_Send(&final_cost, 1, MPI_DOUBLE, 0, 0, comm);
-                    }
-                } else if (rank == 0) {
-                    MPI_Recv(&final_cost, 1, MPI_DOUBLE, size - 1, 0, comm, MPI_STATUS_IGNORE);
-                }
-
-                // Broadcast final cost
-                MPI_Bcast(&final_cost, 1, MPI_DOUBLE, 0, comm);
-
-                // Check if we have a valid path
-                if (final_cost == INF) {
-                    return {INF, {}};
-                }
-
-                // Only root performs backtracking
-                std::vector<std::pair<int, int>> path;
-                if (rank == 0) {
-                    // Backtrack to find the path
-                    int i = n, j = m;
-                    while (i > 0 || j > 0) {
-                        path.emplace_back(i-1, j-1);
-
-                        double d0 = (i > 0 && j > 0) ? prev_row[j-1] : INF;
-                        double d1 = (i > 0) ? prev_row[j] : INF;
-                        double d2 = (j > 0) ? curr_row[j-1] : INF;
-
-                        if (d0 <= d1 && d0 <= d2) {
-                            --i; --j;
-                        } else if (d1 < d2) {
-                            --i;
-                        } else {
-                            --j;
-                        }
-                    }
-                    std::reverse(path.begin(), path.end());
-                   // std::cout << "Final cost: " << final_cost << std::endl;
-                }
-
-                return {final_cost, path};
-            }
-
-            // MPI version of constrained DTW (used by FastDTW MPI)
-            template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
-            inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained_mpi(
-                    const std::vector<std::vector<double>>& A,
-                    const std::vector<std::vector<double>>& B,
-                    const std::vector<std::pair<int, int>>& window,
-                    MPI_Comm comm = MPI_COMM_WORLD) {
-
-                int rank, size;
-                MPI_Comm_rank(comm, &rank);
-                MPI_Comm_size(comm, &size);
-
-                int n = A.size();
-                int m = B.size();
-                int dim = A.empty() ? 0 : A[0].size();
-
-                // For single process, use sequential algorithm
-                if (size == 1) {
-                    return core::dtw_constrained(A, B, window);
                 }
 
                 const double INF = std::numeric_limits<double>::infinity();
 
-                // Broadcast dimensions
-                int dims[3] = {n, m, dim};
-                MPI_Bcast(dims, 3, MPI_INT, 0, comm);
-                n = dims[0]; m = dims[1]; dim = dims[2];
+                MPI_Bcast(&n, 1, MPI_INT, 0, comm);
+                MPI_Bcast(&m, 1, MPI_INT, 0, comm);
+                MPI_Bcast(&dim, 1, MPI_INT, 0, comm);
 
-                // Create window mask for efficient lookup
-                std::vector<std::vector<bool>> in_window(n, std::vector<bool>(m, false));
-                for (const auto& [i, j] : window) {
-                    if (i >= 0 && i < n && j >= 0 && j < m) {
-                        in_window[i][j] = true;
+                std::vector<std::vector<double>> A_local(n, std::vector<double>(dim));
+                std::vector<std::vector<double>> B_local(m, std::vector<double>(dim));
+
+                std::vector<double> buffer(n * dim + m * dim);
+                if (rank == 0) {
+                    for (int i = 0; i < n; ++i) {
+                        std::copy(A[i].begin(), A[i].end(), buffer.begin() + i * dim);
+                    }
+                    for (int j = 0; j < m; ++j) {
+                        std::copy(B[j].begin(), B[j].end(), buffer.begin() + n * dim + j * dim);
                     }
                 }
 
-                // Calculate row distribution
-                int rows_per_proc = n / size;
-                int extra_rows = n % size;
-                int my_start_row = rank * rows_per_proc + std::min(rank, extra_rows);
-                int my_num_rows = rows_per_proc + (rank < extra_rows ? 1 : 0);
-                int my_end_row = my_start_row + my_num_rows;
+                MPI_Bcast(buffer.data(), buffer.size(), MPI_DOUBLE, 0, comm);
 
-                // Distribute data efficiently
-                std::vector<std::vector<double>> local_A(my_num_rows, std::vector<double>(dim));
-                std::vector<std::vector<double>> B_local = B;
+                for (int i = 0; i < n; ++i) {
+                    std::copy(buffer.begin() + i * dim, buffer.begin() + (i + 1) * dim, A_local[i].begin());
+                }
+                for (int j = 0; j < m; ++j) {
+                    std::copy(buffer.begin() + n * dim + j * dim,
+                              buffer.begin() + n * dim + (j + 1) * dim, B_local[j].begin());
+                }
 
-                if (rank == 0) {
-                    // Send each process its rows
-                    for (int p = 1; p < size; ++p) {
-                        int p_start = p * rows_per_proc + std::min(p, extra_rows);
-                        int p_rows = rows_per_proc + (p < extra_rows ? 1 : 0);
+                std::vector<std::vector<double>> D(n + 1, std::vector<double>(m + 1, INF));
+                utils::init_dtw_matrix(D);
 
-                        for (int i = 0; i < p_rows; ++i) {
-                            MPI_Send(A[p_start + i].data(), dim, MPI_DOUBLE, p, i, comm);
+                int n_blocks = (n + block_size - 1) / block_size;
+                int m_blocks = (m + block_size - 1) / block_size;
+
+
+                // Pre-allocate communication buffers
+                std::vector<double> row_buffer(m + 1);
+                std::vector<double> col_buffer(n + 1);
+
+                for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
+
+                    int start_bi = std::max(0, wave - m_blocks + 1);
+                    int end_bi = std::min(n_blocks - 1, wave);
+
+                    // Distribute blocks within the wave across processes
+                    std::vector<std::pair<int, int>> my_blocks;
+                    for (int bi = start_bi; bi <= end_bi; ++bi) {
+                        int bj = wave - bi;
+                        if (bj >= 0 && bj < m_blocks) {
+                            // Round-robin distribution of blocks
+                            int block_idx = bi - start_bi;
+                            if (block_idx % size == rank) {
+                                my_blocks.push_back({bi, bj});
+                            }
                         }
                     }
-                    // Copy local rows
-                    for (int i = 0; i < my_num_rows; ++i) {
-                        local_A[i] = A[my_start_row + i];
-                    }
-                } else {
-                    // Receive my rows
-                    for (int i = 0; i < my_num_rows; ++i) {
-                        MPI_Recv(local_A[i].data(), dim, MPI_DOUBLE, 0, i, comm, MPI_STATUS_IGNORE);
-                    }
-                }
 
-                // Broadcast B to all processes
-                std::vector<double> B_flat(m * dim);
-                if (rank == 0) {
-                    for (int j = 0; j < m; ++j) {
-                        std::memcpy(B_flat.data() + j * dim, B[j].data(), dim * sizeof(double));
-                    }
-                }
-                MPI_Bcast(B_flat.data(), m * dim, MPI_DOUBLE, 0, comm);
+                    if (!my_blocks.empty()) {
 
-                if (rank != 0) {
-                    B_local.resize(m, std::vector<double>(dim));
-                    for (int j = 0; j < m; ++j) {
-                        std::memcpy(B_local[j].data(), B_flat.data() + j * dim, dim * sizeof(double));
-                    }
-                }
+                        // Process my blocks with OpenMP
+                        #pragma omp parallel for schedule(dynamic, 1)
+                        for (size_t idx = 0; idx < my_blocks.size(); ++idx) {
+                            int bi = my_blocks[idx].first;
+                            int bj = my_blocks[idx].second;
 
-                // Row-based computation with pipelining, only computing cells in window
-                std::vector<double> prev_row(m + 1, INF);
-                std::vector<double> curr_row(m + 1, INF);
+                            int i_start = bi * block_size + 1;
+                            int i_end = std::min((bi + 1) * block_size, n);
+                            int j_start = bj * block_size + 1;
+                            int j_end = std::min((bj + 1) * block_size, m);
 
-                // Initialize first row for process 0
-                if (rank == 0) {
-                    prev_row[0] = 0;
-                }
-
-                // Process rows with pipelining
-                for (int global_i = 1; global_i <= n; ++global_i) {
-                    if (global_i > my_start_row && global_i <= my_end_row) {
-                        int local_i = global_i - my_start_row - 1;
-
-                        // Receive previous row from previous process
-                        if (global_i == my_start_row + 1 && rank > 0) {
-                            MPI_Recv(prev_row.data(), m + 1, MPI_DOUBLE, rank - 1, global_i - 1, comm, MPI_STATUS_IGNORE);
-                        }
-
-                        // Compute current row
-                        std::fill(curr_row.begin(), curr_row.end(), INF);
-                        curr_row[0] = INF;
-
-                        for (int j = 1; j <= m; ++j) {
-                            // Only compute if this cell is in the window
-                            if (global_i - 1 < n && j - 1 < m && in_window[global_i - 1][j - 1]) {
-                                //double cost = compute_distance_optimized(local_A[local_i].data(), B_local[j-1].data(), dim);
-                                double cost = distance::Metric<M>::compute(local_A[local_i].data(), B_local[j-1].data(), dim);
-
-
-
-                                double min_prev = INF;
-                                if (prev_row[j] != INF) {
-                                    min_prev = std::min(min_prev, prev_row[j]);
-                                }
-                                if (curr_row[j-1] != INF) {
-                                    min_prev = std::min(min_prev, curr_row[j-1]);
-                                }
-                                if (prev_row[j-1] != INF) {
-                                    min_prev = std::min(min_prev, prev_row[j-1]);
-                                }
-
-                                if (min_prev != INF) {
-                                    curr_row[j] = cost + min_prev;
+                            for (int i = i_start; i <= i_end; ++i) {
+                                for (int j = j_start; j <= j_end; ++j) {
+                                    D[i][j] = utils::compute_cell_cost<M>(
+                                            A_local[i-1].data(), B_local[j-1].data(), dim,
+                                            D[i-1][j-1], D[i][j-1], D[i-1][j]
+                                    );
                                 }
                             }
                         }
 
-                        // Send current row to next process if needed
-                        if (global_i == my_end_row && rank < size - 1) {
-                            MPI_Send(curr_row.data(), m + 1, MPI_DOUBLE, rank + 1, global_i, comm);
+                    }
+
+                    // Synchronization - only share boundaries needed for next wave
+
+                    // Share only the last row and column of each block
+                    for (int bi = start_bi; bi <= end_bi; ++bi) {
+                        int bj = wave - bi;
+                        if (bj >= 0 && bj < m_blocks) {
+                            int block_owner = (bi - start_bi) % size;
+
+                            // Share last row of block (if not last block row)
+                            if (bi < n_blocks - 1) {
+                                int i_boundary = std::min((bi + 1) * block_size, n);
+                                int j_start = bj * block_size;
+                                int j_end = std::min((bj + 1) * block_size, m);
+
+                                if (rank == block_owner) {
+                                    std::copy(D[i_boundary].begin() + j_start,
+                                              D[i_boundary].begin() + j_end + 1,
+                                              row_buffer.begin());
+                                }
+
+                                MPI_Bcast(row_buffer.data(), j_end - j_start + 1,
+                                          MPI_DOUBLE, block_owner, comm);
+
+                                if (rank != block_owner) {
+                                    std::copy(row_buffer.begin(),
+                                              row_buffer.begin() + (j_end - j_start + 1),
+                                              D[i_boundary].begin() + j_start);
+                                }
+                            }
+
+                            // Share last column of block (if not last block column)
+                            if (bj < m_blocks - 1) {
+                                int j_boundary = std::min((bj + 1) * block_size, m);
+                                int i_start = bi * block_size;
+                                int i_end = std::min((bi + 1) * block_size, n);
+
+                                if (rank == block_owner) {
+                                    for (int i = i_start; i <= i_end; ++i) {
+                                        col_buffer[i - i_start] = D[i][j_boundary];
+                                    }
+                                }
+
+                                MPI_Bcast(col_buffer.data(), i_end - i_start + 1,
+                                          MPI_DOUBLE, block_owner, comm);
+
+                                if (rank != block_owner) {
+                                    for (int i = i_start; i <= i_end; ++i) {
+                                        D[i][j_boundary] = col_buffer[i - i_start];
+                                    }
+                                }
+                            }
                         }
-
-                        // Swap rows
-                        std::swap(prev_row, curr_row);
                     }
+
                 }
 
-                // Gather final result
-                double final_cost;
-
-                if (rank == size - 1) {
-                    final_cost = prev_row[m];
-                    if (rank > 0) {
-                        MPI_Send(&final_cost, 1, MPI_DOUBLE, 0, 0, comm);
-                    }
-                } else if (rank == 0) {
-                    MPI_Recv(&final_cost, 1, MPI_DOUBLE, size - 1, 0, comm, MPI_STATUS_IGNORE);
-                }
-
-                // Broadcast final cost
-                MPI_Bcast(&final_cost, 1, MPI_DOUBLE, 0, comm);
-
-                // Only root performs backtracking
                 std::vector<std::pair<int, int>> path;
                 if (rank == 0) {
-                    int i = n, j = m;
-                    while (i > 0 || j > 0) {
-                        path.emplace_back(i-1, j-1);
-
-                        double d0 = (i > 0 && j > 0) ? prev_row[j-1] : INF;
-                        double d1 = (i > 0) ? prev_row[j] : INF;
-                        double d2 = (j > 0) ? curr_row[j-1] : INF;
-
-                        if (d0 <= d1 && d0 <= d2) {
-                            --i; --j;
-                        } else if (d1 < d2) {
-                            --i;
-                        } else {
-                            --j;
-                        }
-                    }
-                    std::reverse(path.begin(), path.end());
+                    path = utils::backtrack_path(D);
                 }
-
-                return {final_cost, path};
+                return {D[n][m], path};
             }
-
-// MPI version of FastDTW
-            inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw_mpi(
-                    const std::vector<std::vector<double>>& A,
-                    const std::vector<std::vector<double>>& B,
-                    int radius = 1,
-                    int min_size = 100,
-                    MPI_Comm comm = MPI_COMM_WORLD) {
-
-                using namespace path;  // For downsample, expand_path, get_window
-
-                int rank, size;
-                MPI_Comm_rank(comm, &rank);
-                MPI_Comm_size(comm, &size);
-
-                int n = A.size();
-                int m = B.size();
-                int dim = A.empty() ? 0 : A[0].size();
-
-                // For single process or small problems, use sequential algorithm
-                if (size == 1 || (n <= min_size && m <= min_size)) {
-                    return fast::fastdtw_cpu(A, B, radius, min_size);
-                }
-
-                // Base case: if we can't downsample further
-                if (n <= 2 || m <= 2) {
-                    return dtw_mpi(A, B, comm);
-                }
-
-                // Only master handles the recursive downsampling
-                std::vector<std::pair<int, int>> window;
-                if (rank == 0) {
-                    // Recursive case:
-                    // 1. Coarsen the time series
-                    auto A_coarse = path::downsample(A);
-                    auto B_coarse = path::downsample(B);
-
-                    // 2. Recursively compute FastDTW on the coarsened data
-                    // Use sequential version for the recursive call to avoid MPI overhead
-                    auto [cost_coarse, path_coarse] = fast::fastdtw_cpu(A_coarse, B_coarse, radius, min_size);
-
-                    // 3. Project the low-resolution path to a higher resolution
-                    auto projected_path = path::expand_path(path_coarse, n, m);
-
-                    // 4. Create a search window around the projected path
-                    window = path::get_window(projected_path, n, m, radius);
-                }
-
-                // Broadcast window size to all processes
-                int window_size = (rank == 0) ? window.size() : 0;
-                MPI_Bcast(&window_size, 1, MPI_INT, 0, comm);
-
-                // Broadcast the window to all processes
-                if (rank != 0) {
-                    window.resize(window_size);
-                }
-                MPI_Bcast(window.data(), window_size * 2, MPI_INT, 0, comm);
-
-                // Now perform constrained DTW within the window using MPI parallelization
-                return dtw_constrained_mpi(A, B, window, comm);
-            }
-
-
-
-
-
 
 
 
