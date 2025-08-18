@@ -6,9 +6,9 @@
 #include <limits>
 #include <algorithm>
 
-#include "distance_metrics.hpp"
-#include "constraints.hpp"
-#include "dtw_utils.hpp"
+#include "dtw_accelerator/core/distance_metrics.hpp"
+#include "dtw_accelerator/core/constraints.hpp"
+#include "dtw_accelerator/core/dtw_utils.hpp"
 #include <map>
 
 
@@ -122,6 +122,39 @@ namespace dtw_accelerator {
             return {D[n][m], path};
         }
 
+        // Helper function to check constraints
+        template<constraints::ConstraintType CT, int R, double S>
+        constexpr bool within_constraint(int i, int j, int n, int m) {
+            if constexpr (CT == constraints::ConstraintType::SAKOE_CHIBA) {
+                return constraints::within_sakoe_chiba_band<R>(i, j, n, m);
+            } else if constexpr (CT == constraints::ConstraintType::ITAKURA) {
+                return constraints::within_itakura_parallelogram<S>(i, j, n, m);
+            }
+            return true;
+        }
+
+        // Helper function to process a single cell
+        template<distance::MetricType M>
+        inline void process_cell(std::vector<std::vector<double>>& D,
+                                 const std::vector<std::vector<double>>& A,
+                                 const std::vector<std::vector<double>>& B,
+                                 int i, int j, int dim) {
+            const double INF = std::numeric_limits<double>::infinity();
+            int i_cost = i + 1;
+            int j_cost = j + 1;
+
+            double min_prev = utils::min_prev_cost(
+                    D[i_cost-1][j_cost-1],
+                    D[i_cost][j_cost-1],
+                    D[i_cost-1][j_cost]
+            );
+
+            if (min_prev != INF) {
+                double cost = distance::Metric<M>::compute(A[i].data(), B[j].data(), dim);
+                D[i_cost][j_cost] = cost + min_prev;
+            }
+        }
+
 
 
 
@@ -140,43 +173,30 @@ namespace dtw_accelerator {
             std::vector<std::vector<double>> D(n+1, std::vector<double>(m+1, INF));
             utils::init_dtw_matrix(D);
 
-            // Create a constraint mask based on the specified constraint type
-            auto constraint_mask = utils::generate_constraint_mask<CT, R, S>(n, m);
-
-            // Process points in order of increasing sum of coordinates (i + j)
-            // This ensures dependencies are met (cells to the left and above are computed first)
-            std::vector<std::pair<int, int>> ordered_points;
-            for (int i = 0; i < n; ++i) {
-                for (int j = 0; j < m; ++j) {
-                    if (constraint_mask[i][j]) {
-                        ordered_points.emplace_back(i, j);
-                    }
+            if constexpr (CT == ConstraintType::NONE) {
+                D[1][1] = distance::Metric<M>::compute(A[0].data(), B[0].data(), dim);
+            } else {
+                if (within_constraint<CT, R, S>(0, 0, n, m)) {
+                    D[1][1] = distance::Metric<M>::compute(A[0].data(), B[0].data(), dim);
                 }
             }
 
-            std::sort(ordered_points.begin(), ordered_points.end(),
-                      [](const auto& a, const auto& b) {
-                          return a.first + a.second < b.first + b.second;
-                      });
+            // Process diagonals in order (sum = i + j)
+            // This naturally maintains DTW dependencies
+            for (int sum = 1; sum < n + m - 1; ++sum) {
+                int start_i = std::max(0, sum - (m - 1));
+                int end_i = std::min(n - 1, sum);
 
-            // Initialize first cell
-            if (!ordered_points.empty()) {
-                D[1][1] = distance::Metric<M>::compute(A[0].data(), B[0].data(), dim);
-            }
-
-            // Process constraint points directly
-            for (const auto& [i, j] : ordered_points) {
-                if (i == 0 && j == 0) continue; // Skip the origin
-
-                int i_cost = i + 1; // +1 for cost matrix indexing
-                int j_cost = j + 1;
-
-                double min_prev = utils::min_prev_cost(D[i_cost-1][j_cost-1], D[i_cost][j_cost-1], D[i_cost-1][j_cost]);
-
-                // Update cell if we found a valid path to it
-                if (min_prev != INF) {
-                    double cost = distance::Metric<M>::compute(A[i].data(), B[j].data(), dim);
-                    D[i_cost][j_cost] = cost + min_prev;
+                for (int i = start_i; i <= end_i; ++i) {
+                    int j = sum - i;
+                    if (j >= 0 && j < m) {
+                        // Check constraint on-the-fly
+                        if constexpr (CT == ConstraintType::NONE) {
+                            process_cell<M>(D, A, B, i, j, dim);
+                        } else if (within_constraint<CT, R, S>(i, j, n, m)) {
+                            process_cell<M>(D, A, B, i, j, dim);
+                        }
+                    }
                 }
             }
 
@@ -190,6 +210,7 @@ namespace dtw_accelerator {
             auto path = utils::backtrack_path(D);
             return {D[n][m], path};
         }
+
 
     } // namespace core
 } // namespace dtw_accelerator

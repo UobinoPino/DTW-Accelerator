@@ -44,3 +44,5 @@ namespace dtw_accelerator {
 } // namespace dtw_accelerator
 
 #endif // DTW_ACCELERATOR_CONSTRAINTS_HPP
+
+

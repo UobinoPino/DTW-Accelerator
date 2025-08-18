@@ -10,11 +10,11 @@
 #include <cstring>
 #include <immintrin.h>
 
-#include "../distance_metrics.hpp"
-#include "../constraints.hpp"
-#include "../path_processing.hpp"
-#include "../core_dtw.hpp"
-#include "../fast_dtw.hpp"
+#include "../../../core/distance_metrics.hpp"
+#include "../../../core/constraints.hpp"
+#include "../../../core/path_processing.hpp"
+#include "../../sequential/core_dtw.hpp"
+#include "../../sequential/fast_dtw.hpp"
 
 namespace dtw_accelerator {
     namespace parallel {

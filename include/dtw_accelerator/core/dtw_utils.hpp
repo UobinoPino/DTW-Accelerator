@@ -5,7 +5,7 @@
 #include <utility>
 #include <limits>
 #include <algorithm>
-#include "distance_metrics.hpp"
+#include "dtw_accelerator/core/distance_metrics.hpp"
 #include <omp.h>
 
 namespace dtw_accelerator {
@@ -18,6 +18,7 @@ namespace dtw_accelerator {
             int m = D[0].size() - 1;
 
             D[0][0] = 0.0;
+
             for (int i = 1; i <= n; ++i) D[i][0] = INF;
             for (int j = 1; j <= m; ++j) D[0][j] = INF;
         }

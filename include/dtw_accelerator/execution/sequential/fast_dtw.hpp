@@ -4,9 +4,9 @@
 #include <vector>
 #include <utility>
 
-#include "constraints.hpp"
-#include "path_processing.hpp"
-#include "core_dtw.hpp"
+#include "dtw_accelerator/core/constraints.hpp"
+#include "dtw_accelerator/core/path_processing.hpp"
+#include "dtw_accelerator/execution/sequential/core_dtw.hpp"
 
 namespace dtw_accelerator {
     namespace fast {
