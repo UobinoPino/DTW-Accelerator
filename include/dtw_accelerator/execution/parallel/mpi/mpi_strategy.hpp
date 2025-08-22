@@ -5,6 +5,7 @@
 #include "dtw_accelerator/core/distance_metrics.hpp"
 #include "dtw_accelerator/core/constraints.hpp"
 #include "dtw_accelerator/core/dtw_utils.hpp"
+#include "dtw_accelerator/core/matrix.hpp"
 #include <vector>
 #include <utility>
 #include <limits>
@@ -44,12 +45,12 @@ namespace dtw_accelerator {
                 MPI_Comm_size(communicator_, &cached_size_);
             }
 
-            void initialize_matrix(std::vector<std::vector<double>>& D, int n, int m) const {
+            void initialize_matrix(DoubleMatrix& D, int n, int m) const {
                 initialize_matrix_impl(D, n, m);
             }
 
             template<distance::MetricType M>
-            void execute(std::vector<std::vector<double>>& D,
+            void execute(DoubleMatrix& D,
                          const std::vector<std::vector<double>>& A,
                          const std::vector<std::vector<double>>& B,
                          int n, int m, int dim) const {
@@ -135,18 +136,20 @@ namespace dtw_accelerator {
                                 int j_end = std::min((bj + 1) * block_size_ -1, m - 1);
 
                                 if (rank == block_owner) {
-                                    std::copy(D[i_boundary].begin() + j_start,
-                                              D[i_boundary].begin() + j_end + 1,
-                                              row_buffer.begin());
+                                    // Copy row data from Matrix to buffer
+                                    for (int j = j_start; j <= j_end; ++j) {
+                                        row_buffer[j - j_start] = D(i_boundary, j);
+                                    }
                                 }
 
                                 MPI_Bcast(row_buffer.data(), j_end - j_start + 1,
                                           MPI_DOUBLE, block_owner, communicator_);
 
                                 if (rank != block_owner) {
-                                    std::copy(row_buffer.begin(),
-                                              row_buffer.begin() + (j_end - j_start + 1),
-                                              D[i_boundary].begin() + j_start);
+                                    // Copy buffer data back to Matrix
+                                    for (int j = j_start; j <= j_end; ++j) {
+                                        D(i_boundary, j) = row_buffer[j - j_start];
+                                    }
                                 }
                             }
 
@@ -158,7 +161,7 @@ namespace dtw_accelerator {
 
                                 if (rank == block_owner) {
                                     for (int i = i_start; i <= i_end; ++i) {
-                                        col_buffer[i - i_start] = D[i][j_boundary];
+                                        col_buffer[i - i_start] = D(i, j_boundary);
                                     }
                                 }
 
@@ -167,7 +170,7 @@ namespace dtw_accelerator {
 
                                 if (rank != block_owner) {
                                     for (int i = i_start; i <= i_end; ++i) {
-                                        D[i][j_boundary] = col_buffer[i - i_start];
+                                        D(i, j_boundary) = col_buffer[i - i_start];
                                     }
                                 }
                             }
@@ -178,7 +181,7 @@ namespace dtw_accelerator {
             }
 
             template<distance::MetricType M>
-            void execute_constrained(std::vector<std::vector<double>>& D,
+            void execute_constrained(DoubleMatrix& D,
                                      const std::vector<std::vector<double>>& A,
                                      const std::vector<std::vector<double>>& B,
                                      const std::vector<std::pair<int, int>>& window,
@@ -237,43 +240,30 @@ namespace dtw_accelerator {
             }
 
             std::pair<double, std::vector<std::pair<int, int>>>
-            extract_result(const std::vector<std::vector<double>>& D) const {
-                //  printf("[DEBUG Rank %d] Extracting result\n", cached_rank_);
+            extract_result(const DoubleMatrix& D) const {
                 int rank = cached_rank_;
 
                 if (rank != 0) {
-                    // printf("[DEBUG Rank %d] Non-root rank returning dummy result\n", rank);
                     return {0.0, {}};  // Empty path, cost will be ignored
                 }
+
                 if (rank == 0) {
-                    // printf("[DEBUG Rank %d] Root rank extracting complete path\n", rank);
-
                     // Before extraction, ensure the last element D[n][m] exists and is valid
-                    int n = D.size() - 1;
-                    int m = D[0].size() - 1;
-
-                    //   printf("[DEBUG Rank %d] Matrix size: %dx%d\n", rank, n+1, m+1);
+                    int n = D.rows() - 1;
+                    int m = D.cols() - 1;
 
                     // Check if D[n][m] is accessible
                     if (n >= 0 && m >= 0) {
-                        double final_cost = D[n][m];
-                        //    printf("[DEBUG Rank %d] Final cost at D[%d][%d] = %f\n", rank, n, m, final_cost);
-
+                        double final_cost = D(n, m);
                         // Extract the path
                         auto path = utils::backtrack_path(D);
-                        // printf("[DEBUG Rank %d] Path extracted, length=%zu\n", rank, path.size());
-
                         return {final_cost, path};
                     } else {
-                        // printf("[ERROR Rank %d] Invalid matrix dimensions for path extraction\n", rank);
                         return {0.0, {}};
                     }
                 }
 
                 return {0.0, {}};  // Default return, shouldn't be reached
-
-
-                // return extract_result_impl(D);
             }
 
             void set_block_size(int block_size) { block_size_ = block_size; }
@@ -284,7 +274,7 @@ namespace dtw_accelerator {
 
         private:
             template<distance::MetricType M>
-            void process_block(std::vector<std::vector<double>>& D,
+            void process_block(DoubleMatrix& D,
                                const std::vector<std::vector<double>>& A,
                                const std::vector<std::vector<double>>& B,
                                int bi, int bj, int n, int m, int dim) const {
@@ -296,20 +286,20 @@ namespace dtw_accelerator {
 
                 for (int i = i_start; i <= i_end; ++i) {
                     for (int j = j_start; j <= j_end; ++j) {
-                        D[i][j] = utils::compute_cell_cost<M>(
+                        D(i, j) = utils::compute_cell_cost<M>(
                                 A[i-1].data(), B[j-1].data(), dim,
-                                D[i-1][j-1], D[i][j-1], D[i-1][j]
+                                D(i-1, j-1), D(i, j-1), D(i-1, j)
                         );
                     }
                 }
             }
 
             template<distance::MetricType M>
-            void process_block_constrained(std::vector<std::vector<double>>& D,
+            void process_block_constrained(DoubleMatrix& D,
                                            const std::vector<std::vector<double>>& A,
                                            const std::vector<std::vector<double>>& B,
                                            int bi, int bj, int n, int m, int dim,
-                                           const std::vector<std::vector<bool>>& mask) const {
+                                           const BoolMatrix& mask) const {
 
                 int i_start = bi * block_size_ + 1;
                 int i_end = std::min((bi + 1) * block_size_, n);
@@ -318,17 +308,17 @@ namespace dtw_accelerator {
 
                 for (int i = i_start; i <= i_end; ++i) {
                     for (int j = j_start; j <= j_end; ++j) {
-                        if (i-1 < n && j-1 < m && mask[i-1][j-1]) {
-                            D[i][j] = utils::compute_cell_cost<M>(
+                        if (i-1 < n && j-1 < m && mask(i-1, j-1)) {
+                            D(i, j) = utils::compute_cell_cost<M>(
                                     A[i-1].data(), B[j-1].data(), dim,
-                                    D[i-1][j-1], D[i][j-1], D[i-1][j]
+                                    D(i-1, j-1), D(i, j-1), D(i-1, j)
                             );
                         }
                     }
                 }
             }
 
-            void broadcast_block_boundaries(std::vector<std::vector<double>>& D,
+            void broadcast_block_boundaries(DoubleMatrix& D,
                                             int bi, int bj, int n, int m, int owner,
                                             std::vector<double>& row_buffer,
                                             std::vector<double>& col_buffer) const {
@@ -344,18 +334,18 @@ namespace dtw_accelerator {
                     int j_end = std::min((bj + 1) * block_size_, m);
 
                     if (rank == owner) {
-                        std::copy(D[i_boundary].begin() + j_start,
-                                  D[i_boundary].begin() + j_end + 1,
-                                  row_buffer.begin());
+                        for (int j = j_start; j <= j_end; ++j) {
+                            row_buffer[j - j_start] = D(i_boundary, j);
+                        }
                     }
 
                     MPI_Bcast(row_buffer.data(), j_end - j_start + 1,
                               MPI_DOUBLE, owner, communicator_);
 
                     if (rank != owner) {
-                        std::copy(row_buffer.begin(),
-                                  row_buffer.begin() + (j_end - j_start + 1),
-                                  D[i_boundary].begin() + j_start);
+                        for (int j = j_start; j <= j_end; ++j) {
+                            D(i_boundary, j) = row_buffer[j - j_start];
+                        }
                     }
                 }
 
@@ -367,7 +357,7 @@ namespace dtw_accelerator {
 
                     if (rank == owner) {
                         for (int i = i_start; i <= i_end; ++i) {
-                            col_buffer[i - i_start] = D[i][j_boundary];
+                            col_buffer[i - i_start] = D(i, j_boundary);
                         }
                     }
 
@@ -376,7 +366,7 @@ namespace dtw_accelerator {
 
                     if (rank != owner) {
                         for (int i = i_start; i <= i_end; ++i) {
-                            D[i][j_boundary] = col_buffer[i - i_start];
+                            D(i, j_boundary) = col_buffer[i - i_start];
                         }
                     }
                 }

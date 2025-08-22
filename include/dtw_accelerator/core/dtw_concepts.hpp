@@ -8,6 +8,7 @@
 #include <string_view>
 #include "dtw_accelerator/core/distance_metrics.hpp"
 #include "dtw_accelerator/core/constraints.hpp"
+#include "dtw_accelerator/core/matrix.hpp"
 
 namespace dtw_accelerator {
     namespace concepts {
@@ -15,17 +16,18 @@ namespace dtw_accelerator {
 // Concept for types that can be used as DTW matrices
         template<typename T>
         concept DTWMatrix = requires(T matrix, size_t i, size_t j, double value) {
-    { matrix.resize(i, std::vector<double>(j)) } -> std::same_as<void>;
-{ matrix[i][j] } -> std::convertible_to<double>;
-{ matrix[i][j] = value } -> std::same_as<double&>;
-{ matrix.size() } -> std::convertible_to<size_t>;
+    { matrix.resize(i, j, value) } -> std::same_as<void>;
+{ matrix(i, j) } -> std::convertible_to<double>;
+{ matrix(i, j) = value } -> std::same_as<double&>;
+{ matrix.rows() } -> std::convertible_to<size_t>;
+{ matrix.cols() } -> std::convertible_to<size_t>;
 };
 
 // Base concept for all execution strategies
 template<typename Strategy>
 concept ExecutionStrategy = requires(
         Strategy strategy,
-std::vector<std::vector<double>>& D,
+DoubleMatrix& D,
 const std::vector<std::vector<double>>& A,
 const std::vector<std::vector<double>>& B,
 int n, int m, int dim)
@@ -51,7 +53,7 @@ template<typename Strategy>
 concept ConstrainedExecutionStrategy = ExecutionStrategy<Strategy> &&
                                        requires(
                                                Strategy strategy,
-std::vector<std::vector<double>>& D,
+DoubleMatrix& D,
 const std::vector<std::vector<double>>& A,
 const std::vector<std::vector<double>>& B,
 const std::vector<std::pair<int, int>>& window,
@@ -67,7 +69,7 @@ template<typename Strategy>
 concept TemplatedConstraintStrategy = ExecutionStrategy<Strategy> &&
                                       requires(
                                               Strategy strategy,
-std::vector<std::vector<double>>& D,
+DoubleMatrix& D,
 const std::vector<std::vector<double>>& A,
 const std::vector<std::vector<double>>& B,
 int n, int m, int dim)
@@ -101,7 +103,7 @@ template<typename Strategy, distance::MetricType M>
 struct supports_metric : std::false_type {};
 
 template<typename Strategy, distance::MetricType M>
-requires requires(Strategy s, std::vector<std::vector<double>>& D,
+requires requires(Strategy s, DoubleMatrix& D,
                   const std::vector<std::vector<double>>& A,
                   const std::vector<std::vector<double>>& B,
                   int n, int m, int dim) {

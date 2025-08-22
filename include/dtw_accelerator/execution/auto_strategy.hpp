@@ -5,6 +5,7 @@
 #include "dtw_accelerator/core/distance_metrics.hpp"
 #include "dtw_accelerator/core/constraints.hpp"
 #include "dtw_accelerator/core/dtw_utils.hpp"
+#include "dtw_accelerator/core/matrix.hpp"
 #include <vector>
 #include <utility>
 #include <limits>
@@ -57,14 +58,14 @@ namespace dtw_accelerator {
         public:
             explicit AutoStrategy(int n = 0, int m = 0) : n_(n), m_(m) {}
 
-            void initialize_matrix(std::vector<std::vector<double>>& D, int n, int m) const {
+            void initialize_matrix(DoubleMatrix& D, int n, int m) const {
                 // n_ = n; m_ = m;
                 select_strategy();
                 strategy_->initialize_matrix(D, n, m);
             }
 
             template<distance::MetricType M>
-            void execute(std::vector<std::vector<double>>& D,
+            void execute(DoubleMatrix& D,
                          const std::vector<std::vector<double>>& A,
                          const std::vector<std::vector<double>>& B,
                          int n, int m, int dim) const {
@@ -73,7 +74,7 @@ namespace dtw_accelerator {
             }
 
             template<distance::MetricType M>
-            void execute_constrained(std::vector<std::vector<double>>& D,
+            void execute_constrained(DoubleMatrix& D,
                                      const std::vector<std::vector<double>>& A,
                                      const std::vector<std::vector<double>>& B,
                                      const std::vector<std::pair<int, int>>& window,
@@ -83,7 +84,7 @@ namespace dtw_accelerator {
             }
 
             std::pair<double, std::vector<std::pair<int, int>>>
-            extract_result(const std::vector<std::vector<double>>& D) const {
+            extract_result(const DoubleMatrix& D) const {
                 return strategy_->extract_result(D);
             }
 

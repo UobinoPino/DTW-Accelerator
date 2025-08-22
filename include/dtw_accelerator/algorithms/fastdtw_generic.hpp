@@ -4,6 +4,7 @@
 #include "dtw_accelerator/core/dtw_concepts.hpp"
 #include "dtw_accelerator/execution/execution_strategies.hpp"
 #include "dtw_accelerator/core/path_processing.hpp"
+#include "dtw_accelerator/core/matrix.hpp"
 #include <vector>
 #include <utility>
 #include <type_traits>

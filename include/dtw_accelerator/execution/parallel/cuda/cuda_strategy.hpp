@@ -11,6 +11,7 @@
 #include "../../../core/dtw_concepts.hpp"
 #include "../../../core/path_processing.hpp"
 #include "../../../core/dtw_utils.hpp"
+#include "../../../core/matrix.hpp"
 #include "../../../execution/sequential/standard_strategy.hpp"
 
 namespace dtw_accelerator {
@@ -36,13 +37,13 @@ public:
     explicit CUDAStrategy(int tile_size = DEFAULT_TILE_SIZE)
         : tile_size_(tile_size), device_initialized_(false) {}
 
-    void initialize_matrix(std::vector<std::vector<double>>& D, int n, int m) const {
-        D.resize(n + 1, std::vector<double>(m + 1, std::numeric_limits<double>::infinity()));
-        D[0][0] = 0.0;
+    void initialize_matrix(DoubleMatrix& D, int n, int m) const {
+        D.resize(n + 1, m + 1, std::numeric_limits<double>::infinity());
+        D(0, 0) = 0.0;
     }
 
     template<distance::MetricType M>
-    void execute(std::vector<std::vector<double>>& D,
+    void execute(DoubleMatrix& D,
                  const std::vector<std::vector<double>>& A,
                  const std::vector<std::vector<double>>& B,
                  int n, int m, int dim) const {
@@ -64,7 +65,7 @@ public:
     }
 
     template<distance::MetricType M>
-    void execute_constrained(std::vector<std::vector<double>>& D,
+    void execute_constrained(DoubleMatrix& D,
                             const std::vector<std::vector<double>>& A,
                             const std::vector<std::vector<double>>& B,
                             const std::vector<std::pair<int, int>>& window,
@@ -88,7 +89,7 @@ public:
 
     template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
              distance::MetricType M = distance::MetricType::EUCLIDEAN>
-    void execute_with_constraint(std::vector<std::vector<double>>& D,
+    void execute_with_constraint(DoubleMatrix& D,
                                  const std::vector<std::vector<double>>& A,
                                  const std::vector<std::vector<double>>& B,
                                  int n, int m, int dim) const {
@@ -110,11 +111,11 @@ public:
     }
 
     std::pair<double, std::vector<std::pair<int, int>>>
-    extract_result(const std::vector<std::vector<double>>& D) const {
-        int n = D.size() - 1;
-        int m = D[0].size() - 1;
+    extract_result(const DoubleMatrix& D) const {
+        int n = D.rows() - 1;
+        int m = D.cols() - 1;
         auto path = utils::backtrack_path(D);
-        return {D[n][m], path};
+        return {D(n, m), path};
     }
 
     void set_tile_size(int tile_size) { tile_size_ = tile_size; }

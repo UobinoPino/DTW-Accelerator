@@ -17,7 +17,7 @@
 
 // CUDA integration (not yet available)
 #ifdef USE_CUDA
-#include "dtw_accelerator/execution/parallel/cuda/cuda_integration.hpp"
+#include "dtw_accelerator/execution/parallel/cuda/cuda_strategy.hpp"
 #endif
 
 
