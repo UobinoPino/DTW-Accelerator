@@ -1,7 +1,7 @@
 #ifndef DTW_ACCELERATOR_PATH_PROCESSING_HPP
 #define DTW_ACCELERATOR_PATH_PROCESSING_HPP
 
-
+#include "time_series.hpp"
 #include <vector>
 #include <utility>
 #include <algorithm>
@@ -10,17 +10,18 @@ namespace dtw_accelerator {
     namespace path {
 
 // Downsample a time series by averaging consecutive points
-        inline std::vector<std::vector<double>> downsample(const std::vector<std::vector<double>>& series) {
-            if (series.size() <= 2) return series;
+        template<typename T = double>
+        inline TimeSeries<T> downsample(const TimeSeries<T>& series) {
+            if (series.length() <= 2) return series;
 
-            int n = series.size();
-            int dim = series[0].size();
-            int new_size = (n + 1) / 2;
+            size_t n = series.length();
+            size_t dim = series.dimensions();
+            size_t new_size = (n + 1) / 2;
 
-            std::vector<std::vector<double>> result(new_size, std::vector<double>(dim, 0.0));
+            TimeSeries<T> result(new_size, dim, 0.0);
 
-            for (int i = 0; i < new_size; ++i) {
-                for (int d = 0; d < dim; ++d) {
+            for (size_t i = 0; i < new_size; ++i) {
+                for (size_t d = 0; d < dim; ++d) {
                     if (2*i + 1 < n) {
                         // Average two points
                         result[i][d] = (series[2*i][d] + series[2*i+1][d]) / 2.0;
@@ -48,7 +49,7 @@ namespace dtw_accelerator {
 
                 expanded.emplace_back(i_high, j_high);
 
-                // Add a second point if not at boundary
+                // Add additional points if not at boundary
                 if (i_high + 1 < higher_n) expanded.emplace_back(i_high + 1, j_high);
                 if (j_high + 1 < higher_m) expanded.emplace_back(i_high, j_high + 1);
                 if (i_high + 1 < higher_n && j_high + 1 < higher_m)
@@ -66,6 +67,7 @@ namespace dtw_accelerator {
         inline std::vector<std::pair<int, int>> get_window(
                 const std::vector<std::pair<int, int>>& path,
                 int n, int m, int radius) {
+
             std::vector<std::pair<int, int>> window = path;
 
             // Expand window by radius

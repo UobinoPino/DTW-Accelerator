@@ -13,17 +13,6 @@
 namespace dtw_accelerator {
     namespace utils {
 
-        // Initialize DTW cost matrix
-//        inline void init_dtw_matrix(std::vector<std::vector<double>>& D) {
-//            const double INF = std::numeric_limits<double>::infinity();
-//            int n = D.size() - 1;
-//            int m = D[0].size() - 1;
-//
-//            D[0][0] = 0.0;
-//
-//            for (int i = 1; i <= n; ++i) D[i][0] = INF;
-//            for (int j = 1; j <= m; ++j) D[0][j] = INF;
-//        }
         inline void init_dtw_matrix(DoubleMatrix& D) {
             const double INF = std::numeric_limits<double>::infinity();
             D.fill(INF);
@@ -58,34 +47,6 @@ namespace dtw_accelerator {
             return min_val;
         }
 
-        // Backtrack through DTW matrix to find an optimal path
-//        inline std::vector<std::pair<int, int>> backtrack_path(
-//                const std::vector<std::vector<double>>& D) {
-//
-//            const double INF = std::numeric_limits<double>::infinity();
-//            int i = D.size() - 1;
-//            int j = D[0].size() - 1;
-//            std::vector<std::pair<int, int>> path;
-//
-//            while (i > 0 || j > 0) {
-//                path.emplace_back(i-1, j-1);
-//
-//                double d_diag = (i > 0 && j > 0) ? D[i-1][j-1] : INF;
-//                double d_up = (i > 0) ? D[i-1][j] : INF;
-//                double d_left = (j > 0) ? D[i][j-1] : INF;
-//
-//                if (d_diag <= d_up && d_diag <= d_left) {
-//                    --i; --j;
-//                } else if (d_up < d_left) {
-//                    --i;
-//                } else {
-//                    --j;
-//                }
-//            }
-//
-//            std::reverse(path.begin(), path.end());
-//            return path;
-//        }
         inline std::vector<std::pair<int, int>> backtrack_path(const DoubleMatrix& D) {
             const double INF = std::numeric_limits<double>::infinity();
             int i = D.rows() - 1;
@@ -113,22 +74,6 @@ namespace dtw_accelerator {
         }
 
 
-
-        // Create window mask from window points
-//        inline std::vector<std::vector<bool>> create_window_mask(
-//                const std::vector<std::pair<int, int>>& window,
-//                int n, int m) {
-//
-//            std::vector<std::vector<bool>> in_window(n, std::vector<bool>(m, false));
-//            #pragma omp parallel for
-//            for (int idx = 0; idx < window.size(); ++idx) {
-//                const auto& [i, j] = window[idx];
-//                if (i >= 0 && i < n && j >= 0 && j < m) {
-//                    in_window[i][j] = true;
-//                }
-//            }
-//            return in_window;
-//        }
         inline BoolMatrix create_window_mask(const std::vector<std::pair<int, int>>& window,
                                              int n, int m) {
             BoolMatrix mask(n, m, false);
@@ -140,29 +85,6 @@ namespace dtw_accelerator {
             return mask;
         }
 
-        // Generate constraint mask based on constraint type
-//        template<constraints::ConstraintType CT, int R = 1, double S = 2.0>
-//        inline std::vector<std::vector<bool>> generate_constraint_mask(int n, int m) {
-//            using namespace constraints;
-//
-//            std::vector<std::vector<bool>> mask(n, std::vector<bool>(m, false));
-//            #pragma omp parallel for collapse(2)
-//            for (int i = 0; i < n; ++i) {
-//                for (int j = 0; j < m; ++j) {
-//                    if constexpr (CT == ConstraintType::NONE) {
-//                        mask[i][j] = true;
-//                    }
-//                    else if constexpr (CT == ConstraintType::SAKOE_CHIBA) {
-//                        mask[i][j] = within_sakoe_chiba_band<R>(i, j, n, m);
-//                    }
-//                    else if constexpr (CT == ConstraintType::ITAKURA) {
-//                        mask[i][j] = within_itakura_parallelogram<S>(i, j, n, m);
-//                    }
-//                }
-//            }
-//
-//            return mask;
-//        }
         template<constraints::ConstraintType CT, int R = 1, double S = 2.0>
         inline BoolMatrix generate_constraint_mask(int n, int m) {
             using namespace constraints;

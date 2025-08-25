@@ -44,8 +44,8 @@ public:
 
     template<distance::MetricType M>
     void execute(DoubleMatrix& D,
-                 const std::vector<std::vector<double>>& A,
-                 const std::vector<std::vector<double>>& B,
+                 const DoubleTimeSeries& A,
+                 const DoubleTimeSeries& B,
                  int n, int m, int dim) const {
 
         ensure_device_initialized();
@@ -66,8 +66,8 @@ public:
 
     template<distance::MetricType M>
     void execute_constrained(DoubleMatrix& D,
-                            const std::vector<std::vector<double>>& A,
-                            const std::vector<std::vector<double>>& B,
+                            const DoubleTimeSeries& A,
+                            const DoubleTimeSeries& B,
                             const std::vector<std::pair<int, int>>& window,
                             int n, int m, int dim) const {
 
@@ -90,8 +90,8 @@ public:
     template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
              distance::MetricType M = distance::MetricType::EUCLIDEAN>
     void execute_with_constraint(DoubleMatrix& D,
-                                 const std::vector<std::vector<double>>& A,
-                                 const std::vector<std::vector<double>>& B,
+                                 const DoubleTimeSeries& A,
+                                 const DoubleTimeSeries& B,
                                  int n, int m, int dim) const {
 
         ensure_device_initialized();
@@ -139,8 +139,8 @@ public:
 
 template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
 inline std::pair<double, std::vector<std::pair<int, int>>> dtw_cuda(
-        const std::vector<std::vector<double>>& A,
-        const std::vector<std::vector<double>>& B,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
         int tile_size = DEFAULT_TILE_SIZE) {
 
     auto result = dtw_cuda_impl(A, B, M, tile_size);
@@ -150,8 +150,8 @@ inline std::pair<double, std::vector<std::pair<int, int>>> dtw_cuda(
 
 template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
 inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained_cuda(
-        const std::vector<std::vector<double>>& A,
-        const std::vector<std::vector<double>>& B,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
         const std::vector<std::pair<int, int>>& window,
         int tile_size = DEFAULT_TILE_SIZE) {
 
@@ -163,8 +163,8 @@ inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained_cuda(
 template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
          distance::MetricType M = distance::MetricType::EUCLIDEAN>
 inline std::pair<double, std::vector<std::pair<int, int>>> dtw_cuda_with_constraint(
-        const std::vector<std::vector<double>>& A,
-        const std::vector<std::vector<double>>& B,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
         int tile_size = DEFAULT_TILE_SIZE) {
 
     auto result = dtw_with_constraint_cuda_impl(A, B, CT, R, S, M, tile_size);
@@ -175,8 +175,8 @@ inline std::pair<double, std::vector<std::pair<int, int>>> dtw_cuda_with_constra
 // FastDTW implementation using CUDA
 template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
 inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw_cuda(
-        const std::vector<std::vector<double>>& A,
-        const std::vector<std::vector<double>>& B,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
         int radius = 1,
         int min_size = 100,
         int tile_size = DEFAULT_TILE_SIZE) {

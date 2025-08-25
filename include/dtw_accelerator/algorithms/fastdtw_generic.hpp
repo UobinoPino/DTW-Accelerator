@@ -16,8 +16,8 @@ namespace dtw_accelerator {
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             concepts::ConstrainedExecutionStrategy Strategy>
     inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B,
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
             int radius,
             int min_size,
             Strategy&& strategy) {
@@ -63,8 +63,8 @@ namespace dtw_accelerator {
     // OpenMP FastDTW
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw_openmp(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B,
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
             int radius = 1,
             int min_size = 100,
             int num_threads = 0,
@@ -77,8 +77,8 @@ namespace dtw_accelerator {
 // Auto-selecting FastDTW
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw_auto(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B,
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
             int radius = 1,
             int min_size = 100) {
 

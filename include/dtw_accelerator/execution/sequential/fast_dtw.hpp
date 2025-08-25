@@ -13,8 +13,8 @@ namespace dtw_accelerator {
 
 // Main FastDTW implementation
         inline std::pair<double, std::vector<std::pair<int, int>>> fastdtw_cpu(
-                const std::vector<std::vector<double>>& A,
-                const std::vector<std::vector<double>>& B,
+                const DoubleTimeSeries& A,
+                const DoubleTimeSeries& B,
                 int radius = 1,
                 int min_size = 100) {
 

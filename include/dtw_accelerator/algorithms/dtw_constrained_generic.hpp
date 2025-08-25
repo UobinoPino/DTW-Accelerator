@@ -15,14 +15,14 @@ namespace dtw_accelerator {
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             concepts::ConstrainedExecutionStrategy Strategy>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B,
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
             const std::vector<std::pair<int, int>>& window,
             Strategy&& strategy) {
 
         int n = A.size();
         int m = B.size();
-        int dim = A.empty() ? 0 : A[0].size();
+        int dim = A.dimensions();
 
         // Validate input
         if (n == 0 || m == 0 || window.empty()) {

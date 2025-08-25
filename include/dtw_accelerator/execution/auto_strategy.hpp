@@ -66,8 +66,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void execute(DoubleMatrix& D,
-                         const std::vector<std::vector<double>>& A,
-                         const std::vector<std::vector<double>>& B,
+                         const DoubleTimeSeries& A,
+                         const DoubleTimeSeries& B,
                          int n, int m, int dim) const {
                 select_strategy();
                 strategy_->template execute<M>(D, A, B, n, m, dim);
@@ -75,8 +75,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void execute_constrained(DoubleMatrix& D,
-                                     const std::vector<std::vector<double>>& A,
-                                     const std::vector<std::vector<double>>& B,
+                                     const DoubleTimeSeries& A,
+                                     const DoubleTimeSeries& B,
                                      const std::vector<std::pair<int, int>>& window,
                                      int n, int m, int dim) const {
                 select_strategy();

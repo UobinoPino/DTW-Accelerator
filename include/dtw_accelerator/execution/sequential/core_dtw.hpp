@@ -18,8 +18,8 @@ namespace dtw_accelerator {
         // DTW implementation (used for base case in fast_dtw)
         template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int,int>>> dtw_cpu(
-                const std::vector<std::vector<double>>& A,
-                const std::vector<std::vector<double>>& B)
+                const DoubleTimeSeries& A,
+                const DoubleTimeSeries& B)
         {
             int n = (int)A.size(), m = (int)B.size(), dim = (int)A[0].size();
             const double INF = std::numeric_limits<double>::infinity();
@@ -30,7 +30,7 @@ namespace dtw_accelerator {
             for(int i=1;i<=n;++i) {
                 for(int j=1;j<=m;++j) {
                     D[i][j] = utils::compute_cell_cost<M>(
-                            A[i-1].data(), B[j-1].data(), dim,
+                            A[i-1], B[j-1], dim,
                             D[i-1][j-1], D[i][j-1], D[i-1][j]
                     );
                 }
@@ -43,14 +43,14 @@ namespace dtw_accelerator {
 
         template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
         std::pair<double, std::vector<std::pair<int,int>>> dtw_blocked(
-                const std::vector<std::vector<double>>& A,
-                const std::vector<std::vector<double>>& B,
+                const DoubleTimeSeries& A,
+                const DoubleTimeSeries& B,
                 int block_size = 64,
                 int num_threads = 0) {
 
             int n = A.size();
             int m = B.size();
-            int dim = A.empty() ? 0 : A[0].size();
+            int dim = A.dimensions();
             const double INF = std::numeric_limits<double>::infinity();
             std::vector<std::vector<double>> D(n + 1, std::vector<double>(m + 1, INF));
             dtw_accelerator::utils::init_dtw_matrix(D);
@@ -73,7 +73,7 @@ namespace dtw_accelerator {
                         for (int i = i_start; i <= i_end; ++i) {
                             for (int j = j_start; j <= j_end; ++j) {
                                 D[i][j] = dtw_accelerator::utils::compute_cell_cost<M>(
-                                        A[i-1].data(), B[j-1].data(), dim,
+                                        A[i-1], B[j-1], dim,
                                         D[i-1][j-1], D[i][j-1], D[i-1][j]
                                 );
                             }
@@ -90,8 +90,8 @@ namespace dtw_accelerator {
         //Constrained DTW that only computes cells within the window
         template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int, int>>> dtw_constrained(
-                const std::vector<std::vector<double>>& A,
-                const std::vector<std::vector<double>>& B,
+                const DoubleTimeSeries& A,
+                const DoubleTimeSeries& B,
                 const std::vector<std::pair<int, int>>& window) {
 
             int n = A.size(), m = B.size(), dim = A[0].size();
@@ -109,7 +109,7 @@ namespace dtw_accelerator {
                 for (int j = 1; j <= m; ++j) {
                     if (i-1 < n && j-1 < m && in_window[i-1][j-1]) {
                         D[i][j] = utils::compute_cell_cost<M>(
-                                A[i-1].data(), B[j-1].data(), dim,
+                                A[i-1], B[j-1], dim,
                                 D[i-1][j-1], D[i][j-1], D[i-1][j]
                         );
                     }
@@ -136,8 +136,8 @@ namespace dtw_accelerator {
         // Helper function to process a single cell
         template<distance::MetricType M>
         inline void process_cell(std::vector<std::vector<double>>& D,
-                                 const std::vector<std::vector<double>>& A,
-                                 const std::vector<std::vector<double>>& B,
+                                 const DoubleTimeSeries& A,
+                                 const DoubleTimeSeries& B,
                                  int i, int j, int dim) {
             const double INF = std::numeric_limits<double>::infinity();
             int i_cost = i + 1;
@@ -161,8 +161,8 @@ namespace dtw_accelerator {
         template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                 distance::MetricType M = distance::MetricType::EUCLIDEAN>
         inline std::pair<double, std::vector<std::pair<int, int>>> dtw_with_constraint(
-                const std::vector<std::vector<double>>& A,
-                const std::vector<std::vector<double>>& B) {
+                const DoubleTimeSeries& A,
+                const DoubleTimeSeries& B) {
 
             using namespace constraints;
 

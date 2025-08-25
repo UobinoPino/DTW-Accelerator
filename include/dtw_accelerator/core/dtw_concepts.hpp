@@ -28,8 +28,8 @@ template<typename Strategy>
 concept ExecutionStrategy = requires(
         Strategy strategy,
 DoubleMatrix& D,
-const std::vector<std::vector<double>>& A,
-const std::vector<std::vector<double>>& B,
+const DoubleTimeSeries& A,
+const DoubleTimeSeries& B,
 int n, int m, int dim)
 {
 // Required: Initialize the DTW matrix
@@ -54,8 +54,8 @@ concept ConstrainedExecutionStrategy = ExecutionStrategy<Strategy> &&
                                        requires(
                                                Strategy strategy,
 DoubleMatrix& D,
-const std::vector<std::vector<double>>& A,
-const std::vector<std::vector<double>>& B,
+const DoubleTimeSeries& A,
+const DoubleTimeSeries& B,
 const std::vector<std::pair<int, int>>& window,
 int n, int m, int dim)
 {
@@ -70,8 +70,8 @@ concept TemplatedConstraintStrategy = ExecutionStrategy<Strategy> &&
                                       requires(
                                               Strategy strategy,
 DoubleMatrix& D,
-const std::vector<std::vector<double>>& A,
-const std::vector<std::vector<double>>& B,
+const DoubleTimeSeries& A,
+const DoubleTimeSeries& B,
 int n, int m, int dim)
 {
 // Support Sakoe-Chiba and Itakura constraints
@@ -104,8 +104,8 @@ struct supports_metric : std::false_type {};
 
 template<typename Strategy, distance::MetricType M>
 requires requires(Strategy s, DoubleMatrix& D,
-                  const std::vector<std::vector<double>>& A,
-                  const std::vector<std::vector<double>>& B,
+                  const DoubleTimeSeries& A,
+                  const DoubleTimeSeries& B,
                   int n, int m, int dim) {
     { s.template execute<M>(D, A, B, n, m, dim) } -> std::same_as<void>;
 }

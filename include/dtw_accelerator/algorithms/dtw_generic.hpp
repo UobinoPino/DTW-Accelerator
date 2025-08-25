@@ -15,8 +15,8 @@ namespace dtw_accelerator {
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             concepts::ExecutionStrategy Strategy>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B,
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
             Strategy&& strategy) {
 
         static_assert(concepts::supports_metric_v<std::decay_t<Strategy>, M>,
@@ -24,7 +24,7 @@ namespace dtw_accelerator {
 
         int n = A.size();
         int m = B.size();
-        int dim = A.empty() ? 0 : A[0].size();
+        int dim = A.dimensions();
 
         // Validate input
         if (n == 0 || m == 0) {
@@ -47,16 +47,16 @@ namespace dtw_accelerator {
 // Sequential DTW
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_sequential(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B) {
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B) {
         return dtw<M>(A, B, execution::SequentialStrategy{});
     }
 
 // Blocked DTW
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_blocked(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B,
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
             int block_size = 64) {
         return dtw<M>(A, B, execution::BlockedStrategy{block_size});
     }
@@ -65,8 +65,8 @@ namespace dtw_accelerator {
     // OpenMP DTW
 template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
 inline std::pair<double, std::vector<std::pair<int, int>>> dtw_openmp(
-        const std::vector<std::vector<double>>& A,
-        const std::vector<std::vector<double>>& B,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
         int num_threads = 0,
         int block_size = 64) {
     return dtw<M>(A, B, execution::OpenMPStrategy{num_threads, block_size});
@@ -77,8 +77,8 @@ inline std::pair<double, std::vector<std::pair<int, int>>> dtw_openmp(
     // MPI DTW
 template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
 inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
-        const std::vector<std::vector<double>>& A,
-        const std::vector<std::vector<double>>& B,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
         int block_size = 64,
         int threads_per_process = 0,
         MPI_Comm comm = MPI_COMM_WORLD) {
@@ -89,8 +89,8 @@ inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
 // Auto-selecting DTW
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_auto(
-            const std::vector<std::vector<double>>& A,
-            const std::vector<std::vector<double>>& B) {
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B) {
 
         int n = A.size();
         int m = B.size();

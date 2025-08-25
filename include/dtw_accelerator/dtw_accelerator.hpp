@@ -32,6 +32,10 @@ namespace dtw_accelerator {
     using distance::MetricType;
     using constraints::ConstraintType;
 
+    // Re-export TimeSeries types
+    using DoubleTimeSeries = TimeSeries<double>;
+    using FloatTimeSeries = TimeSeries<float>;
+
 // Re-export execution strategies
     namespace strategies {
         using execution::SequentialStrategy;
@@ -57,15 +61,15 @@ namespace dtw_accelerator {
 
 // Simple DTW with automatic backend selection
     template<MetricType M = MetricType::EUCLIDEAN>
-    inline auto dtw(const std::vector<std::vector<double>>& A,
-                    const std::vector<std::vector<double>>& B) {
+    inline auto dtw(const DoubleTimeSeries& A,
+                    const DoubleTimeSeries& B) {
         return dtw_auto<M>(A, B);
     }
 
 // FastDTW with automatic backend selection
     template<MetricType M = MetricType::EUCLIDEAN>
-    inline auto fastdtw(const std::vector<std::vector<double>>& A,
-                        const std::vector<std::vector<double>>& B,
+    inline auto fastdtw(const DoubleTimeSeries& A,
+                        const DoubleTimeSeries& B,
                         int radius = 1,
                         int min_size = 100) {
         return fastdtw_auto<M>(A, B, radius, min_size);
@@ -78,15 +82,15 @@ namespace dtw_accelerator {
     namespace cpu {
         // Sequential implementation
         template<MetricType M = MetricType::EUCLIDEAN>
-        inline auto dtw(const std::vector<std::vector<double>>& A,
-                        const std::vector<std::vector<double>>& B) {
+        inline auto dtw(const DoubleTimeSeries& A,
+                        const DoubleTimeSeries& B) {
             return dtw_sequential<M>(A, B);
         }
 
         // Blocked implementation
         template<MetricType M = MetricType::EUCLIDEAN>
-        inline auto dtw_blocked(const std::vector<std::vector<double>>& A,
-                                const std::vector<std::vector<double>>& B,
+        inline auto dtw_blocked(const DoubleTimeSeries& A,
+                                const DoubleTimeSeries& B,
                                 int block_size = 64) {
             return dtw_accelerator::dtw_blocked<M>(A, B, block_size);
         }
@@ -95,16 +99,16 @@ namespace dtw_accelerator {
 #ifdef USE_OPENMP
     namespace openmp {
     template<MetricType M = MetricType::EUCLIDEAN>
-    inline auto dtw(const std::vector<std::vector<double>>& A,
-                   const std::vector<std::vector<double>>& B,
+    inline auto dtw(const DoubleTimeSeries& A,
+                   const DoubleTimeSeries& B,
                    int num_threads = 0,
                    int block_size = 64) {
         return dtw_openmp<M>(A, B, num_threads, block_size);
     }
 
     template<MetricType M = MetricType::EUCLIDEAN>
-    inline auto fastdtw(const std::vector<std::vector<double>>& A,
-                       const std::vector<std::vector<double>>& B,
+    inline auto fastdtw(const DoubleTimeSeries& A,
+                       const DoubleTimeSeries& B,
                        int radius = 1,
                        int min_size = 100,
                        int num_threads = 0,
@@ -117,8 +121,8 @@ namespace dtw_accelerator {
 #ifdef USE_MPI
     namespace mpi {
     template<MetricType M = MetricType::EUCLIDEAN>
-    inline auto dtw(const std::vector<std::vector<double>>& A,
-                   const std::vector<std::vector<double>>& B,
+    inline auto dtw(const DoubleTimeSeries& A,
+                   const DoubleTimeSeries& B,
                    int block_size = 64,
                    int threads_per_process = 0,
                    MPI_Comm comm = MPI_COMM_WORLD) {
@@ -151,16 +155,16 @@ namespace dtw_accelerator {
 
     template<MetricType M = MetricType::EUCLIDEAN, typename Strategy>
     requires concepts::ExecutionStrategy<Strategy>
-    inline auto dtw_custom(const std::vector<std::vector<double>>& A,
-                           const std::vector<std::vector<double>>& B,
+    inline auto dtw_custom(const DoubleTimeSeries& A,
+                           const DoubleTimeSeries& B,
                            Strategy&& strategy) {
         return dtw<M>(A, B, std::forward<Strategy>(strategy));
     }
 
     template<MetricType M = MetricType::EUCLIDEAN, typename Strategy>
     requires concepts::ConstrainedExecutionStrategy<Strategy>
-    inline auto dtw_constrained_custom(const std::vector<std::vector<double>>& A,
-                                       const std::vector<std::vector<double>>& B,
+    inline auto dtw_constrained_custom(const DoubleTimeSeries& A,
+                                       const DoubleTimeSeries& B,
                                        const std::vector<std::pair<int, int>>& window,
                                        Strategy&& strategy) {
         return dtw_constrained<M>(A, B, window, std::forward<Strategy>(strategy));
@@ -172,8 +176,8 @@ namespace dtw_accelerator {
 
     template<ConstraintType CT, int R = 1, double S = 2.0,
             MetricType M = MetricType::EUCLIDEAN, typename Strategy>
-    inline auto dtw_with_constraint(const std::vector<std::vector<double>>& A,
-                                    const std::vector<std::vector<double>>& B,
+    inline auto dtw_with_constraint(const DoubleTimeSeries& A,
+                                    const DoubleTimeSeries& B,
                                     Strategy&& strategy) {
         // Use auto-strategy by default
         return dtw_with_constraint<CT, R, S, M>(A, B, std::forward<Strategy>(strategy));

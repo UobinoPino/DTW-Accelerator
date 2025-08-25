@@ -32,8 +32,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void execute(DoubleMatrix& D,
-                         const std::vector<std::vector<double>>& A,
-                         const std::vector<std::vector<double>>& B,
+                         const DoubleTimeSeries& A,
+                         const DoubleTimeSeries& B,
                          int n, int m, int dim) const {
 
                 int n_blocks = (n + block_size_ - 1) / block_size_;
@@ -55,8 +55,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void execute_constrained(DoubleMatrix& D,
-                                     const std::vector<std::vector<double>>& A,
-                                     const std::vector<std::vector<double>>& B,
+                                     const DoubleTimeSeries& A,
+                                     const DoubleTimeSeries& B,
                                      const std::vector<std::pair<int, int>>& window,
                                      int n, int m, int dim) const {
 
@@ -80,8 +80,8 @@ namespace dtw_accelerator {
             template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                     distance::MetricType M = distance::MetricType::EUCLIDEAN>
             void execute_with_constraint(DoubleMatrix& D,
-                                         const std::vector<std::vector<double>>& A,
-                                         const std::vector<std::vector<double>>& B,
+                                         const DoubleTimeSeries& A,
+                                         const DoubleTimeSeries& B,
                                          int n, int m, int dim) const {
 
                 auto constraint_mask = utils::generate_constraint_mask<CT, R, S>(n, m);
@@ -115,8 +115,8 @@ namespace dtw_accelerator {
         private:
             template<distance::MetricType M>
             void process_block(DoubleMatrix& D,
-                               const std::vector<std::vector<double>>& A,
-                               const std::vector<std::vector<double>>& B,
+                               const DoubleTimeSeries& A,
+                               const DoubleTimeSeries& B,
                                int bi, int bj, int n, int m, int dim) const {
 
                 int i_start = bi * block_size_ + 1;
@@ -127,7 +127,7 @@ namespace dtw_accelerator {
                 for (int i = i_start; i <= i_end; ++i) {
                     for (int j = j_start; j <= j_end; ++j) {
                         D(i, j) = utils::compute_cell_cost<M>(
-                                A[i-1].data(), B[j-1].data(), dim,
+                                A[i-1], B[j-1], dim,
                                 D(i-1, j-1), D(i, j-1), D(i-1, j)
                         );
                     }
@@ -136,8 +136,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void process_block_constrained(DoubleMatrix& D,
-                                           const std::vector<std::vector<double>>& A,
-                                           const std::vector<std::vector<double>>& B,
+                                           const DoubleTimeSeries& A,
+                                           const DoubleTimeSeries& B,
                                            int bi, int bj, int n, int m, int dim,
                                            const BoolMatrix& mask) const {
 
@@ -150,7 +150,7 @@ namespace dtw_accelerator {
                     for (int j = j_start; j <= j_end; ++j) {
                         if (i-1 < n && j-1 < m && mask(i-1, j-1)) {
                             D(i, j) = utils::compute_cell_cost<M>(
-                                    A[i-1].data(), B[j-1].data(), dim,
+                                    A[i-1], B[j-1], dim,
                                     D(i-1, j-1), D(i, j-1), D(i-1, j)
                             );
                         }

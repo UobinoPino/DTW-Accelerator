@@ -58,8 +58,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void execute(std::vector<std::vector<double>>& D,
-                         const std::vector<std::vector<double>>& A,
-                         const std::vector<std::vector<double>>& B,
+                         const DoubleTimeSeries& A,
+                         const DoubleTimeSeries& B,
                          int n, int m, int dim) const {
 
                 int rank = cached_rank_;
@@ -297,8 +297,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void execute_constrained(std::vector<std::vector<double>>& D,
-                                     const std::vector<std::vector<double>>& A,
-                                     const std::vector<std::vector<double>>& B,
+                                     const DoubleTimeSeries& A,
+                                     const DoubleTimeSeries& B,
                                      const std::vector<std::pair<int, int>>& window,
                                      int n, int m, int dim) const {
 
@@ -380,7 +380,7 @@ namespace dtw_accelerator {
             }
 
             std::pair<double, std::vector<std::pair<int, int>>>
-            extract_result(const std::vector<std::vector<double>>& D) const {
+            extract_result(const DoubleTimeSeries& D) const {
                 printf("[DEBUG Rank %d] Extracting result\n", cached_rank_);
                 int rank = cached_rank_;
 
@@ -429,8 +429,8 @@ namespace dtw_accelerator {
         private:
             template<distance::MetricType M>
             void process_block(std::vector<std::vector<double>>& D,
-                               const std::vector<std::vector<double>>& A,
-                               const std::vector<std::vector<double>>& B,
+                               const DoubleTimeSeries& A,
+                               const DoubleTimeSeries& B,
                                int bi, int bj, int n, int m, int dim) const {
 
                 int i_start = bi * block_size_ + 1;
@@ -466,7 +466,7 @@ namespace dtw_accelerator {
 
                         try {
                             D[i][j] = utils::compute_cell_cost<M>(
-                                    A[i-1].data(), B[j-1].data(), dim,
+                                    A[i-1], B[j-1], dim,
                                     D[i-1][j-1], D[i][j-1], D[i-1][j]
                             );
                         } catch (const std::exception& e) {
@@ -490,8 +490,8 @@ namespace dtw_accelerator {
 
             template<distance::MetricType M>
             void process_block_constrained(std::vector<std::vector<double>>& D,
-                                           const std::vector<std::vector<double>>& A,
-                                           const std::vector<std::vector<double>>& B,
+                                           const DoubleTimeSeries& A,
+                                           const DoubleTimeSeries& B,
                                            int bi, int bj, int n, int m, int dim,
                                            const std::vector<std::vector<bool>>& mask) const {
 
@@ -513,7 +513,7 @@ namespace dtw_accelerator {
                         if (i-1 < n && j-1 < m && mask[i-1][j-1]) {
                             try {
                                 D[i][j] = utils::compute_cell_cost<M>(
-                                        A[i-1].data(), B[j-1].data(), dim,
+                                        A[i-1], B[j-1], dim,
                                         D[i-1][j-1], D[i][j-1], D[i-1][j]
                                 );
                             } catch (const std::exception& e) {
