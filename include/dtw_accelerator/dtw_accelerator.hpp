@@ -134,8 +134,6 @@ namespace dtw_accelerator {
 #ifdef USE_CUDA
     namespace cuda {
     using parallel::cuda::dtw_cuda;
-    using parallel::cuda::dtw_constrained_cuda;
-    using parallel::cuda::fastdtw_cuda;
     using parallel::cuda::CUDAStrategy;
 
     // Helper to check CUDA availability

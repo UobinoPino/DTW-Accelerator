@@ -32,10 +32,6 @@ namespace dtw_accelerator {
             explicit OpenMPStrategy(int num_threads = 0, int block_size = 64)
                     : num_threads_(num_threads), block_size_(block_size) {}
 
-            void initialize_matrix(DoubleMatrix& D, int n, int m) const {
-                initialize_matrix_impl(D, n, m);
-            }
-
             template<distance::MetricType M>
             void execute(DoubleMatrix& D,
                          const DoubleTimeSeries& A,
@@ -58,7 +54,7 @@ namespace dtw_accelerator {
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
-                            process_block<M>(D, A, B, bi, bj, n, m, dim);
+                            this->process_block<M>(D, A, B, bi, bj, n, m, dim, block_size_);
                         }
                     }
                 }
@@ -87,7 +83,7 @@ namespace dtw_accelerator {
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
-                            process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, in_window);
+                            this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, in_window, block_size_);
                         }
                     }
                 }
@@ -116,16 +112,12 @@ namespace dtw_accelerator {
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
-                            process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, constraint_mask);
+                            this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, constraint_mask, block_size_);
                         }
                     }
                 }
             }
 
-            std::pair<double, std::vector<std::pair<int, int>>>
-            extract_result(const DoubleMatrix& D) const {
-                return extract_result_impl(D);
-            }
 
             void set_num_threads(int threads) { num_threads_ = threads; }
             int get_num_threads() const { return num_threads_; }
@@ -134,52 +126,6 @@ namespace dtw_accelerator {
 
             std::string_view name() const { return "OpenMP"; }
             bool is_parallel() const { return true; }
-
-        private:
-            template<distance::MetricType M>
-            void process_block(DoubleMatrix& D,
-                               const DoubleTimeSeries& A,
-                               const DoubleTimeSeries& B,
-                               int bi, int bj, int n, int m, int dim) const {
-
-                int i_start = bi * block_size_ + 1;
-                int i_end = std::min((bi + 1) * block_size_, n);
-                int j_start = bj * block_size_ + 1;
-                int j_end = std::min((bj + 1) * block_size_, m);
-
-                for (int i = i_start; i <= i_end; ++i) {
-                    for (int j = j_start; j <= j_end; ++j) {
-                        D(i, j) = utils::compute_cell_cost<M>(
-                                A[i-1], B[j-1], dim,
-                                D(i-1, j-1), D(i, j-1), D(i-1, j)
-                        );
-                    }
-                }
-            }
-
-            template<distance::MetricType M>
-            void process_block_constrained(DoubleMatrix& D,
-                                           const DoubleTimeSeries& A,
-                                           const DoubleTimeSeries& B,
-                                           int bi, int bj, int n, int m, int dim,
-                                           const BoolMatrix& mask) const {
-
-                int i_start = bi * block_size_ + 1;
-                int i_end = std::min((bi + 1) * block_size_, n);
-                int j_start = bj * block_size_ + 1;
-                int j_end = std::min((bj + 1) * block_size_, m);
-
-                for (int i = i_start; i <= i_end; ++i) {
-                    for (int j = j_start; j <= j_end; ++j) {
-                        if (i-1 < n && j-1 < m && mask(i-1, j-1)) {
-                            D(i, j) = utils::compute_cell_cost<M>(
-                                    A[i-1], B[j-1], dim,
-                                    D(i-1, j-1), D(i, j-1), D(i-1, j)
-                            );
-                        }
-                    }
-                }
-            }
         };
 
 

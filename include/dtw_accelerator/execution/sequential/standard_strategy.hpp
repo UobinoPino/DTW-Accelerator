@@ -21,9 +21,6 @@ namespace dtw_accelerator {
         // Sequential CPU strategy
         class SequentialStrategy : public BaseStrategy<SequentialStrategy> {
         public:
-            void initialize_matrix(DoubleMatrix& D, int n, int m) const {
-                initialize_matrix_impl(D, n, m);
-            }
 
             template<distance::MetricType M>
             void execute(DoubleMatrix& D,
@@ -81,11 +78,6 @@ namespace dtw_accelerator {
                         }
                     }
                 }
-            }
-
-            std::pair<double, std::vector<std::pair<int, int>>>
-            extract_result(const DoubleMatrix& D) const {
-                return extract_result_impl(D);
             }
 
             std::string_view name() const { return "Sequential"; }
