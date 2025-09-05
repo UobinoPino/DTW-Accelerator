@@ -29,12 +29,31 @@ namespace dtw_accelerator {
         template<double S>
         constexpr bool within_itakura_parallelogram(int i, int j, int n, int m) {
             static_assert(S > 1.0, "Itakura slope constraint must be greater than 1");
-            // Normalize indices to account for different lengths
-            double ni = static_cast<double>(i) / n;
-            double nj = static_cast<double>(j) / m;
-            // This checks if the point is within the Itakura parallelogram
-            return (nj >= ni / S) && (nj <= (1.0 - ni) / S) &&
-                   (nj <= ni * S) && (nj >= (1.0 - ni) * S);
+
+            double di = static_cast<double>(i);
+            double dj = static_cast<double>(j);
+            double dn = static_cast<double>(n - 1);
+            double dm = static_cast<double>(m - 1);
+
+            // Handle edge cases efficiently
+            if (dn <= 0 || dm <= 0) return true;
+
+            // Normalize to [0,1] range
+            double ni = di / dn;
+            double nj = dj / dm;
+
+            // Itakura parallelogram constraints:
+            // The path must satisfy both forward and backward slope constraints
+            // Forward: from (0,0) to current point
+            // Backward: from current point to (1,1)
+
+            // Check if point is within the parallelogram defined by:
+            // max(1/S * ni, S * ni - (S - 1)) ≤ nj ≤ min(S * ni, 1/S * ni + (1 - 1/S))
+
+            double lower_bound = std::max(ni / S, S * ni - (S - 1.0));
+            double upper_bound = std::min(S * ni, ni / S + (1.0 - 1.0/S));
+
+            return nj >= lower_bound && nj <= upper_bound;
 
         }
 

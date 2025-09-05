@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune=native")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune=native -funroll-loops -fprefetch-loop-arrays")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fsanitize=address")
 
 # Define library
@@ -17,7 +17,7 @@ target_include_directories(dtw_accelerator INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
 option(USE_OPENMP "Enable OpenMP support" ON)
 option(USE_MPI "Enable MPI support" ON)
 option(USE_CUDA "Enable CUDA support" ON)
-option(BUILD_TESTS "Build unit tests" OFF)
+option(BUILD_TESTS "Build unit tests" ON)
 option(BUILD_BENCHMARKS "Build performance benchmarks" ON)
 option(BUILD_EXAMPLES "Build example programs" ON)
 
@@ -87,8 +87,10 @@ if(USE_CUDA)
 
         # Create CUDA-specific library for kernels
         add_library(dtw_cuda_kernels STATIC
-                include/dtw_accelerator/execution/parallel/cuda/cuda_kernels.cu
-                include/dtw_accelerator/execution/parallel/cuda/cuda_wrapper.cu
+                include/dtw_accelerator/execution/parallel/cuda/kernels/dtw_core_kernels.cu
+                include/dtw_accelerator/execution/parallel/cuda/kernels/path_kernels.cu
+                include/dtw_accelerator/execution/parallel/cuda/kernels/matrix_kernels.cu
+                include/dtw_accelerator/execution/parallel/cuda/execution/cuda_launcher.cu
         )
 
         target_include_directories(dtw_cuda_kernels PUBLIC
@@ -161,9 +163,17 @@ endif()
 #    endif()
 #endif()
 
+# Build unit tests if enabled
+if(BUILD_TESTS)
+    add_subdirectory(include/tests)
+    message(STATUS "Unit tests enabled")
+else()
+    message(STATUS "Unit tests disabled")
+endif()
+
 # Build benchmarks if enabled
 if(BUILD_BENCHMARKS)
-    add_subdirectory(include/tests/performance)
+  #  add_subdirectory(include/tests/performance)
     message(STATUS "Performance benchmarks enabled")
 else()
     message(STATUS "Performance benchmarks disabled")
