@@ -45,17 +45,19 @@ namespace dtw_accelerator {
                                      const std::vector<std::pair<int, int>>& window,
                                      int n, int m, int dim) const {
 
-                auto in_window = utils::create_window_mask(window, n, m);
+                // Iterate over the window pairs directly
+                for (const auto& [i, j] : window) {
+                    // Convert to 1-based indexing for the matrix
+                    int i_idx = i + 1;
+                    int j_idx = j + 1;
 
-                for (int i = 1; i <= n; ++i) {
-                    for (int j = 1; j <= m; ++j) {
-                        if (i-1 < n && j-1 < m && in_window(i-1, j-1)) {
-                            D(i, j) = utils::compute_cell_cost<M>(
-                                    A[i-1], B[j-1], dim,
-                                    D(i-1, j-1), D(i, j-1), D(i-1, j)
-                            );
-                        }
-                    }
+                    // Compute DTW cost for this cell
+                    D(i_idx, j_idx) = utils::compute_cell_cost<M>(
+                            A[i], B[j], dim,
+                            D(i_idx-1, j_idx-1),
+                            D(i_idx, j_idx-1),
+                            D(i_idx-1, j_idx)
+                    );
                 }
             }
 

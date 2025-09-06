@@ -32,8 +32,8 @@ namespace dtw_accelerator {
                 DeviceBuffer<int> d_path_j(max_path_length);
                 DeviceBuffer<int> d_path_length(1);
 
-                cudaMemcpyAsync(d_A.data, A.data(), n * dim * sizeof(double), cudaMemcpyHostToDevice);
-                cudaMemcpyAsync(d_B.data, B.data(), m * dim * sizeof(double), cudaMemcpyHostToDevice);
+                cudaMemcpy(d_A.data, A.data(), n * dim * sizeof(double), cudaMemcpyHostToDevice);
+                cudaMemcpy(d_B.data, B.data(), m * dim * sizeof(double), cudaMemcpyHostToDevice);
 
                 constexpr int BLOCK_SIZE = 256;
                 int grid_size = ((n+1)*(m+1) + BLOCK_SIZE - 1) / BLOCK_SIZE;

@@ -71,7 +71,6 @@ namespace dtw_accelerator {
                     omp_set_num_threads(num_threads_);
                 }
 
-                auto in_window = utils::create_window_mask(window, n, m);
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 
@@ -83,7 +82,7 @@ namespace dtw_accelerator {
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
-                            this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, in_window, block_size_);
+                            this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, window, block_size_);
                         }
                     }
                 }

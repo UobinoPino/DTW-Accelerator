@@ -202,17 +202,24 @@ namespace dtw_accelerator {
                     return;
                 }
 
-                auto in_window = utils::create_window_mask(window, n, m);
+#ifdef USE_OPENMP
+                if (threads_per_process_ > 0) {
+            omp_set_num_threads(threads_per_process_);
+        }
+#endif
+
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 
                 std::vector<double> row_buffer(m + 1);
                 std::vector<double> col_buffer(n + 1);
 
+                // Process blocks in wavefront order - same pattern as execute()
                 for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
                     int start_bi = std::max(0, wave - m_blocks + 1);
                     int end_bi = std::min(n_blocks - 1, wave);
 
+                    // Distribute blocks across processes
                     std::vector<std::pair<int, int>> my_blocks;
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
@@ -224,13 +231,14 @@ namespace dtw_accelerator {
                         }
                     }
 
+                    // Process assigned blocks
 #ifdef USE_OPENMP
 #pragma omp parallel for schedule(dynamic, 1) if(threads_per_process_ > 0)
 #endif
                     for (size_t idx = 0; idx < my_blocks.size(); ++idx) {
                         int bi = my_blocks[idx].first;
                         int bj = my_blocks[idx].second;
-                        this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, in_window, block_size_);
+                        this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, window, block_size_);
                     }
 
                     // Exchange boundaries using MPI_Bcast
