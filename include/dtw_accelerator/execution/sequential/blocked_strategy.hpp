@@ -81,10 +81,16 @@ namespace dtw_accelerator {
                                          const DoubleTimeSeries& B,
                                          int n, int m, int dim) const {
 
-                auto constraint_mask = utils::generate_constraint_mask<CT, R, S>(n, m);
+                if constexpr (CT == constraints::ConstraintType::NONE) {
+                    // Use standard blocked execution
+                    execute<M>(D, A, B, n, m, dim);
+                    return;
+                }
+
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 
+                // Process blocks in wavefront order
                 for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
                     int start_bi = std::max(0, wave - m_blocks + 1);
                     int end_bi = std::min(n_blocks - 1, wave);
@@ -92,11 +98,14 @@ namespace dtw_accelerator {
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
-                            this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, constraint_mask, block_size_);
+                            // Use the base class optimized method
+                            this->process_block_with_constraint<CT, R, S, M>(
+                                    D, A, B, bi, bj, n, m, dim, block_size_);
                         }
                     }
                 }
             }
+
 
             void set_block_size(int block_size) { block_size_ = block_size; }
             int get_block_size() const { return block_size_; }

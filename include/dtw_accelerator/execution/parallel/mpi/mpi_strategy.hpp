@@ -255,12 +255,28 @@ namespace dtw_accelerator {
                 int size = cached_size_;
 
                 if (size == 1) {
+                    // For single process, use optimized BlockedStrategy
+#ifdef USE_OPENMP
+                    if (threads_per_process_ > 0) {
+                        OpenMPStrategy omp_strat(threads_per_process_, block_size_);
+                        omp_strat.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim);
+                    } else {
+                        BlockedStrategy blocked(block_size_);
+                        blocked.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim);
+                    }
+#else
                     BlockedStrategy blocked(block_size_);
                     blocked.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim);
+#endif
                     return;
                 }
 
-                auto constraint_mask = utils::generate_constraint_mask<CT, R, S>(n, m);
+#ifdef USE_OPENMP
+                if (threads_per_process_ > 0) {
+                    omp_set_num_threads(threads_per_process_);
+                }
+#endif
+
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 
@@ -288,7 +304,9 @@ namespace dtw_accelerator {
                     for (size_t idx = 0; idx < my_blocks.size(); ++idx) {
                         int bi = my_blocks[idx].first;
                         int bj = my_blocks[idx].second;
-                        this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, constraint_mask, block_size_);
+                        // Use the optimized base class method
+                        this->process_block_with_constraint<CT, R, S, M>(
+                                D, A, B, bi, bj, n, m, dim, block_size_);
                     }
 
                     // Exchange boundaries

@@ -66,11 +66,67 @@ namespace dtw_accelerator {
                                          const DoubleTimeSeries& B,
                                          int n, int m, int dim) const {
 
-                auto constraint_mask = utils::generate_constraint_mask<CT, R, S>(n, m);
+                if constexpr (CT == constraints::ConstraintType::NONE) {
+                    // No constraint - standard DTW
+                    for (int i = 1; i <= n; ++i) {
+                        for (int j = 1; j <= m; ++j) {
+                            D(i, j) = utils::compute_cell_cost<M>(
+                                    A[i-1], B[j-1], dim,
+                                    D(i-1, j-1), D(i, j-1), D(i-1, j)
+                            );
+                        }
+                    }
+                }
+                else if constexpr (CT == constraints::ConstraintType::SAKOE_CHIBA) {
+                    // Sakoe-Chiba: Only iterate within the band
+                    for (int i = 1; i <= n; ++i) {
+                        // Calculate the valid j range for this i
+                        // The band constraint in normalized coordinates is |i/n - j/m| <= R/max(n,m)
+                        double ni = static_cast<double>(i-1) / n;
+                        double max_nm = std::max(n, m);
 
-                for (int i = 1; i <= n; ++i) {
-                    for (int j = 1; j <= m; ++j) {
-                        if (constraint_mask(i-1, j-1)) {
+                        // Convert back to j coordinates
+                        int j_min = std::max(1, static_cast<int>(
+                                std::floor((ni - R/max_nm) * m + 1)));
+                        int j_max = std::min(m, static_cast<int>(
+                                std::ceil((ni + R/max_nm) * m + 1)));
+
+                        // Only iterate through valid j values
+                        for (int j = j_min; j <= j_max; ++j) {
+                            D(i, j) = utils::compute_cell_cost<M>(
+                                    A[i-1], B[j-1], dim,
+                                    D(i-1, j-1), D(i, j-1), D(i-1, j)
+                            );
+                        }
+                    }
+                }
+                else if constexpr (CT == constraints::ConstraintType::ITAKURA) {
+                    // Itakura: Calculate valid j range based on parallelogram
+                    for (int i = 1; i <= n; ++i) {
+                        double di = static_cast<double>(i - 1);
+                        double dn = static_cast<double>(n - 1);
+
+                        if (dn <= 0) {
+                            // Edge case: single point
+                            D(i, 1) = utils::compute_cell_cost<M>(
+                                    A[i-1], B[0], dim,
+                                    D(i-1, 0), D(i, 0), D(i-1, 1)
+                            );
+                            continue;
+                        }
+
+                        double ni = di / dn;
+                        double dm = static_cast<double>(m - 1);
+
+                        // Calculate j bounds from Itakura constraints
+                        double lower_bound = std::max(ni / S, S * ni - (S - 1.0));
+                        double upper_bound = std::min(S * ni, ni / S + (1.0 - 1.0/S));
+
+                        int j_min = std::max(1, static_cast<int>(std::floor(lower_bound * dm + 1)));
+                        int j_max = std::min(m, static_cast<int>(std::ceil(upper_bound * dm + 1)));
+
+                        // Only iterate through valid j values
+                        for (int j = j_min; j <= j_max; ++j) {
                             D(i, j) = utils::compute_cell_cost<M>(
                                     A[i-1], B[j-1], dim,
                                     D(i-1, j-1), D(i, j-1), D(i-1, j)
