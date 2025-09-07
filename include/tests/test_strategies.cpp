@@ -4,6 +4,7 @@
 
 using namespace dtw_accelerator;
 using namespace dtw_accelerator::strategies;
+using namespace dtw_accelerator::execution;
 
 // Test fixture for strategy tests
 class StrategyTest : public ::testing::Test {
@@ -49,7 +50,9 @@ SequentialStrategy strategy;
 EXPECT_EQ(strategy.name(), "Sequential");
 EXPECT_FALSE(strategy.is_parallel());
 
-auto result = dtw<MetricType::EUCLIDEAN>(small_a_, small_b_, strategy);
+auto result = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, strategy);
+
 EXPECT_GT(result.first, 0.0);
 EXPECT_FALSE(result.second.empty());
 }
@@ -65,13 +68,16 @@ EXPECT_EQ(strategy.get_block_size(), 32);
 strategy.set_block_size(64);
 EXPECT_EQ(strategy.get_block_size(), 64);
 
-auto result = dtw<MetricType::EUCLIDEAN>(medium_a_, medium_b_, strategy);
+auto result = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        medium_a_, medium_b_, strategy);
+
 EXPECT_GT(result.first, 0.0);
 EXPECT_FALSE(result.second.empty());
 
 // Compare with sequential for correctness
 SequentialStrategy seq_strategy;
-auto seq_result = dtw<MetricType::EUCLIDEAN>(medium_a_, medium_b_, seq_strategy);
+auto seq_result = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        medium_a_, medium_b_, seq_strategy);
 
 EXPECT_TRUE(results_equal(result, seq_result));
 }
@@ -80,25 +86,28 @@ EXPECT_TRUE(results_equal(result, seq_result));
 // Test OpenMP Strategy
 TEST_F(StrategyTest, OpenMPStrategy) {
     OpenMPStrategy strategy(2, 32);
-    
+
     EXPECT_EQ(strategy.name(), "OpenMP");
     EXPECT_TRUE(strategy.is_parallel());
     EXPECT_EQ(strategy.get_num_threads(), 2);
     EXPECT_EQ(strategy.get_block_size(), 32);
-    
+
     strategy.set_num_threads(4);
     strategy.set_block_size(64);
     EXPECT_EQ(strategy.get_num_threads(), 4);
     EXPECT_EQ(strategy.get_block_size(), 64);
-    
-    auto result = dtw<MetricType::EUCLIDEAN>(medium_a_, medium_b_, strategy);
+
+    auto result = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        medium_a_, medium_b_, strategy);
+
     EXPECT_GT(result.first, 0.0);
     EXPECT_FALSE(result.second.empty());
-    
+
     // Compare with sequential for correctness
     SequentialStrategy seq_strategy;
-    auto seq_result = dtw<MetricType::EUCLIDEAN>(medium_a_, medium_b_, seq_strategy);
-    
+    auto seq_result = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        medium_a_, medium_b_, seq_strategy);
+
     EXPECT_TRUE(results_equal(result, seq_result));
 }
 
@@ -114,7 +123,9 @@ TEST_F(StrategyTest, OpenMPConvenienceFunction) {
 TEST_F(StrategyTest, AutoStrategy) {
 AutoStrategy strategy(medium_a_.size(), medium_b_.size());
 
-auto result = dtw<MetricType::EUCLIDEAN>(medium_a_, medium_b_, strategy);
+auto result = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        medium_a_, medium_b_, strategy);
+
 EXPECT_GT(result.first, 0.0);
 EXPECT_FALSE(result.second.empty());
 
@@ -122,8 +133,14 @@ EXPECT_FALSE(result.second.empty());
 EXPECT_FALSE(strategy.name().empty());
 }
 
-// Test convenience functions
-TEST_F(StrategyTest, ConvenienceFunctions) {
+// Test new convenience functions
+TEST_F(StrategyTest, NewConvenienceFunctions) {
+// Test unconstrained convenience function
+auto unconstrained_result = dtw_unconstrained<MetricType::EUCLIDEAN>(
+        small_a_, small_b_, SequentialStrategy{});
+EXPECT_GT(unconstrained_result.first, 0.0);
+EXPECT_FALSE(unconstrained_result.second.empty());
+
 // Test sequential convenience function
 auto seq_result = dtw_sequential<MetricType::EUCLIDEAN>(small_a_, small_b_);
 EXPECT_GT(seq_result.first, 0.0);
@@ -157,32 +174,129 @@ SequentialStrategy seq_strategy;
 BlockedStrategy blocked_strategy(32);
 
 // Test Euclidean
-auto seq_euclidean = dtw<MetricType::EUCLIDEAN>(small_a_, small_b_, seq_strategy);
-auto blocked_euclidean = dtw<MetricType::EUCLIDEAN>(small_a_, small_b_, blocked_strategy);
+auto seq_euclidean = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, seq_strategy);
+auto blocked_euclidean = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, blocked_strategy);
 EXPECT_TRUE(results_equal(seq_euclidean, blocked_euclidean));
 
 // Test Manhattan
-auto seq_manhattan = dtw<MetricType::MANHATTAN>(small_a_, small_b_, seq_strategy);
-auto blocked_manhattan = dtw<MetricType::MANHATTAN>(small_a_, small_b_, blocked_strategy);
+auto seq_manhattan = dtw<MetricType::MANHATTAN, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, seq_strategy);
+auto blocked_manhattan = dtw<MetricType::MANHATTAN, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, blocked_strategy);
 EXPECT_TRUE(results_equal(seq_manhattan, blocked_manhattan));
 
 // Test Chebyshev
-auto seq_chebyshev = dtw<MetricType::CHEBYSHEV>(small_a_, small_b_, seq_strategy);
-auto blocked_chebyshev = dtw<MetricType::CHEBYSHEV>(small_a_, small_b_, blocked_strategy);
+auto seq_chebyshev = dtw<MetricType::CHEBYSHEV, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, seq_strategy);
+auto blocked_chebyshev = dtw<MetricType::CHEBYSHEV, constraints::ConstraintType::NONE>(
+        small_a_, small_b_, blocked_strategy);
 EXPECT_TRUE(results_equal(seq_chebyshev, blocked_chebyshev));
 }
 
-// Test custom strategy function
-TEST_F(StrategyTest, CustomStrategyFunction) {
-SequentialStrategy custom_strategy;
+// Test strategies with constraints
+TEST_F(StrategyTest, StrategiesWithConstraints) {
+SequentialStrategy seq_strategy;
+BlockedStrategy blocked_strategy(32);
 
-auto result = dtw_custom<MetricType::EUCLIDEAN>(small_a_, small_b_, custom_strategy);
-EXPECT_GT(result.first, 0.0);
-EXPECT_FALSE(result.second.empty());
+// Test with Sakoe-Chiba constraint
+auto seq_sc = dtw<MetricType::EUCLIDEAN,
+        constraints::ConstraintType::SAKOE_CHIBA, 3>(
+        small_a_, small_b_, seq_strategy);
 
-// Should match standard sequential result
-auto seq_result = dtw_sequential<MetricType::EUCLIDEAN>(small_a_, small_b_);
-EXPECT_TRUE(results_equal(result, seq_result));
+auto blocked_sc = dtw<MetricType::EUCLIDEAN,
+        constraints::ConstraintType::SAKOE_CHIBA, 3>(
+        small_a_, small_b_, blocked_strategy);
+
+EXPECT_GT(seq_sc.first, 0.0);
+EXPECT_GT(blocked_sc.first, 0.0);
+EXPECT_TRUE(results_equal(seq_sc, blocked_sc));
+
+// Test with Itakura constraint
+auto seq_it = dtw<MetricType::EUCLIDEAN,
+        constraints::ConstraintType::ITAKURA, 1, 2.0>(
+        small_a_, small_b_, seq_strategy);
+
+auto blocked_it = dtw<MetricType::EUCLIDEAN,
+        constraints::ConstraintType::ITAKURA, 1, 2.0>(
+        small_a_, small_b_, blocked_strategy);
+
+EXPECT_GT(seq_it.first, 0.0);
+EXPECT_GT(blocked_it.first, 0.0);
+EXPECT_TRUE(results_equal(seq_it, blocked_it));
+}
+
+// Test strategies with window constraints
+TEST_F(StrategyTest, StrategiesWithWindow) {
+SequentialStrategy seq_strategy;
+BlockedStrategy blocked_strategy(16);
+
+// Create a window
+WindowConstraint window;
+int n = std::min(small_a_.size(), small_b_.size());
+for (int i = 0; i < n; ++i) {
+for (int j = std::max(0, i-2); j <= std::min(n-1, i+2); ++j) {
+window.push_back({i, j});
+}
+}
+
+// Test with window using new interface
+auto seq_window = dtw_windowed<MetricType::EUCLIDEAN>(
+        small_a_, small_b_, window, seq_strategy);
+
+auto blocked_window = dtw_windowed<MetricType::EUCLIDEAN>(
+        small_a_, small_b_, window, blocked_strategy);
+
+EXPECT_GT(seq_window.first, 0.0);
+EXPECT_GT(blocked_window.first, 0.0);
+EXPECT_TRUE(results_equal(seq_window, blocked_window));
+}
+
+// Test the unified execute_with_constraint directly
+TEST_F(StrategyTest, DirectExecuteWithConstraint) {
+SequentialStrategy strategy;
+DoubleMatrix D;
+int n = small_a_.size();
+int m = small_b_.size();
+int dim = small_a_.dimensions();
+
+// Test overload 1: without window (should work without nullptr)
+strategy.initialize_matrix(D, n, m);
+strategy.execute_with_constraint<constraints::ConstraintType::NONE, 1, 2.0,
+        MetricType::EUCLIDEAN>(
+        D, small_a_, small_b_, n, m, dim);  // No nullptr!
+
+auto result1 = strategy.extract_result(D);
+EXPECT_GT(result1.first, 0.0);
+
+// Test overload 2: with window
+WindowConstraint window = {{0,0}, {1,1}, {2,2}};
+strategy.initialize_matrix(D, n, m);
+strategy.execute_with_constraint<constraints::ConstraintType::NONE, 1, 2.0,
+        MetricType::EUCLIDEAN>(
+        D, small_a_, small_b_, n, m, dim, &window);
+
+auto result2 = strategy.extract_result(D);
+EXPECT_TRUE(std::isfinite(result2.first));
+}
+
+// Test FastDTW with new interface
+TEST_F(StrategyTest, FastDTWWithStrategies) {
+SequentialStrategy seq_strategy;
+BlockedStrategy blocked_strategy(32);
+
+auto seq_fast = fastdtw<MetricType::EUCLIDEAN>(
+        medium_a_, medium_b_, 2, 20, seq_strategy);
+
+auto blocked_fast = fastdtw<MetricType::EUCLIDEAN>(
+        medium_a_, medium_b_, 2, 20, blocked_strategy);
+
+EXPECT_GT(seq_fast.first, 0.0);
+EXPECT_GT(blocked_fast.first, 0.0);
+
+// FastDTW is approximate, so allow more tolerance
+EXPECT_TRUE(results_equal(seq_fast, blocked_fast, 1e-4));
 }
 
 int main(int argc, char** argv) {

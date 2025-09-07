@@ -135,6 +135,55 @@ auto result = dtw<MetricType::COSINE>(zero_series, normal_series);
 EXPECT_TRUE(std::isfinite(result.first));  // Should not be NaN or Inf
 }
 
+// Test distance metrics with different constraint types
+TEST_F(DistanceMetricsTest, MetricsWithConstraints) {
+execution::SequentialStrategy strategy;
+
+// Test Euclidean with Sakoe-Chiba
+auto euclidean_sc = dtw<MetricType::EUCLIDEAN,
+        constraints::ConstraintType::SAKOE_CHIBA, 2>(
+        series_a_, series_b_, strategy);
+EXPECT_GT(euclidean_sc.first, 0.0);
+
+// Test Manhattan with Itakura
+auto manhattan_it = dtw<MetricType::MANHATTAN,
+        constraints::ConstraintType::ITAKURA, 1, 2.0>(
+        series_a_, series_b_, strategy);
+EXPECT_GT(manhattan_it.first, 0.0);
+
+// Test with window constraint
+execution::WindowConstraint window = {{0,0}, {0,1}, {1,0}, {1,1}, {2,2}};
+auto chebyshev_window = dtw<MetricType::CHEBYSHEV,
+        constraints::ConstraintType::NONE>(
+        series_a_, series_b_, strategy, &window);
+EXPECT_TRUE(std::isfinite(chebyshev_window.first));
+}
+
+// Test that metrics work correctly with convenience functions
+TEST_F(DistanceMetricsTest, MetricsWithConvenienceFunctions) {
+execution::BlockedStrategy strategy(32);
+
+// Test unconstrained with different metrics
+auto euclidean = dtw_unconstrained<MetricType::EUCLIDEAN>(
+        series_a_, series_b_, strategy);
+auto manhattan = dtw_unconstrained<MetricType::MANHATTAN>(
+        series_a_, series_b_, strategy);
+
+EXPECT_GT(euclidean.first, 0.0);
+EXPECT_GT(manhattan.first, 0.0);
+EXPECT_NE(euclidean.first, manhattan.first);
+
+// Test Sakoe-Chiba with different metrics
+auto euclidean_sc = dtw_sakoe_chiba<MetricType::EUCLIDEAN, 2>(
+series_a_, series_b_, strategy);
+auto manhattan_sc = dtw_sakoe_chiba<MetricType::MANHATTAN, 2>(
+series_a_, series_b_, strategy);
+
+EXPECT_GT(euclidean_sc.first, 0.0);
+EXPECT_GT(manhattan_sc.first, 0.0);
+EXPECT_NE(euclidean_sc.first, manhattan_sc.first);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

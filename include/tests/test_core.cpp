@@ -53,6 +53,7 @@ protected:
 
 // Test basic DTW computation
 TEST_F(DTWCoreTest, BasicDTW) {
+// Using the default unconstrained DTW
 auto result = dtw(simple_a_, simple_b_);
 
 EXPECT_GT(result.first, 0.0);
@@ -128,6 +129,62 @@ EXPECT_FALSE(fast_result.second.empty());
 // FastDTW result should be close to standard DTW (within some tolerance)
 double relative_error = std::abs(fast_result.first - standard_result.first) / standard_result.first;
 EXPECT_LT(relative_error, 0.3);  // Less than 30% error
+}
+
+// Test new convenience functions
+TEST_F(DTWCoreTest, NewConvenienceFunctions) {
+SequentialStrategy strategy;
+
+// Test unconstrained DTW
+auto unconstrained = dtw_unconstrained<MetricType::EUCLIDEAN>(
+        simple_a_, simple_b_, strategy);
+EXPECT_GT(unconstrained.first, 0.0);
+
+// Test Sakoe-Chiba constrained DTW
+auto sakoe_chiba = dtw_sakoe_chiba<MetricType::EUCLIDEAN, 2>(
+simple_a_, simple_b_, strategy);
+EXPECT_GT(sakoe_chiba.first, 0.0);
+
+// Test Itakura constrained DTW
+auto itakura = dtw_itakura<MetricType::EUCLIDEAN, 2.0>(
+simple_a_, simple_b_, strategy);
+EXPECT_GT(itakura.first, 0.0);
+}
+
+// Test FastDTW convenience functions
+TEST_F(DTWCoreTest, FastDTWConvenienceFunctions) {
+// Test sequential FastDTW
+auto seq_result = fastdtw_sequential<MetricType::EUCLIDEAN>(
+        larger_a_, larger_b_, 2, 10);
+EXPECT_GT(seq_result.first, 0.0);
+
+// Test blocked FastDTW
+auto blocked_result = fastdtw_blocked<MetricType::EUCLIDEAN>(
+        larger_a_, larger_b_, 2, 10, 64);
+EXPECT_GT(blocked_result.first, 0.0);
+
+// Results should be similar
+EXPECT_TRUE(results_equal(seq_result, blocked_result, 1e-4));
+}
+
+// Test that the unified interface works without specifying nullptr
+TEST_F(DTWCoreTest, UnifiedInterfaceNoNullptr) {
+SequentialStrategy strategy;
+
+// This should compile and work without specifying nullptr
+auto result1 = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::NONE>(
+        simple_a_, simple_b_, strategy);
+EXPECT_GT(result1.first, 0.0);
+
+// With Sakoe-Chiba constraint - no nullptr needed
+auto result2 = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::SAKOE_CHIBA, 2>(
+        simple_a_, simple_b_, strategy);
+EXPECT_GT(result2.first, 0.0);
+
+// With Itakura constraint - no nullptr needed
+auto result3 = dtw<MetricType::EUCLIDEAN, constraints::ConstraintType::ITAKURA, 1, 2.0>(
+        simple_a_, simple_b_, strategy);
+EXPECT_GT(result3.first, 0.0);
 }
 
 // Test recommendation function
