@@ -23,7 +23,10 @@
 namespace dtw_accelerator {
     namespace execution {
 
-// Base class for common functionality (CRTP pattern for static polymorphism)
+        using WindowConstraint = std::vector<std::pair<int, int>>;
+
+
+        // Base class for common functionality (CRTP pattern for static polymorphism)
         template<typename Derived>
         class BaseStrategy {
         protected:
@@ -99,13 +102,33 @@ namespace dtw_accelerator {
                                                const DoubleTimeSeries& A,
                                                const DoubleTimeSeries& B,
                                                int bi, int bj, int n, int m, int dim,
-                                               int block_size) const {
+                                               int block_size,
+                                               const WindowConstraint* window = nullptr) const {
 
                 int i_start = bi * block_size + 1;
                 int i_end = std::min((bi + 1) * block_size, n);
                 int j_start = bj * block_size + 1;
                 int j_end = std::min((bj + 1) * block_size, m);
 
+                if (window != nullptr) {
+                    for (const auto& [i, j] : *window) {
+                        int i_idx = i + 1;  // Convert to 1-based matrix indexing
+                        int j_idx = j + 1;
+
+                        if (i_idx >= i_start && i_idx <= i_end &&
+                            j_idx >= j_start && j_idx <= j_end) {
+                            D(i_idx, j_idx) = utils::compute_cell_cost<M>(
+                                    A[i], B[j], dim,
+                                    D(i_idx-1, j_idx-1),
+                                    D(i_idx, j_idx-1),
+                                    D(i_idx-1, j_idx)
+                            );
+                        }
+                    }
+                    return;
+                }
+
+                // No custom window - use selected constraint type
                 if constexpr (CT == constraints::ConstraintType::NONE) {
                     // No constraint - process all cells in block
                     for (int i = i_start; i <= i_end; ++i) {
@@ -189,6 +212,31 @@ namespace dtw_accelerator {
 
 
         public:
+
+            // Overload without window
+            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
+            void execute_with_constraint(DoubleMatrix& D,
+                                         const DoubleTimeSeries& A,
+                                         const DoubleTimeSeries& B,
+                                         int n, int m, int dim) const {
+                // Forward to the main implementation with nullptr
+                execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim, nullptr);
+            }
+
+            // Overload with window (for FastDTW)
+            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
+            void execute_with_constraint(DoubleMatrix& D,
+                                         const DoubleTimeSeries& A,
+                                         const DoubleTimeSeries& B,
+                                         int n, int m, int dim,
+                                         const WindowConstraint* window) const {
+                // Main implementation
+                static_cast<const Derived*>(this)->template
+                        execute_with_constraint_impl<CT, R, S, M>(D, A, B, n, m, dim, window);
+            }
+
             // Default implementations that can be overridden
             void initialize_matrix(DoubleMatrix& D, int n, int m) const {
                 initialize_matrix_impl(D, n, m);

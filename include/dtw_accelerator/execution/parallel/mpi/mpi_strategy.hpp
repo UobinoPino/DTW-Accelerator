@@ -20,13 +20,13 @@
 #include <omp.h>
 #endif
 
-//#ifdef USE_MPI
 #include <mpi.h>
-//#endif
-
 
 namespace dtw_accelerator {
     namespace execution {
+
+        using WindowConstraint = std::vector<std::pair<int, int>>;
+
 
         class MPIStrategy : public BaseStrategy<MPIStrategy> {
         private:
@@ -99,11 +99,14 @@ namespace dtw_accelerator {
                 MPI_Comm_size(communicator_, &cached_size_);
             }
 
-            template<distance::MetricType M>
-            void execute(DoubleMatrix& D,
-                         const DoubleTimeSeries& A,
-                         const DoubleTimeSeries& B,
-                         int n, int m, int dim) const {
+            // Unified execute method using execute_with_constraint
+            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
+            void execute_with_constraint(DoubleMatrix& D,
+                                         const DoubleTimeSeries& A,
+                                         const DoubleTimeSeries& B,
+                                         int n, int m, int dim,
+                                         const WindowConstraint* window = nullptr) const {
 
                 int rank = cached_rank_;
                 int size = cached_size_;
@@ -116,23 +119,26 @@ namespace dtw_accelerator {
                 if (size == 1) {
 #ifdef USE_OPENMP
                     if (threads_per_process_ > 0) {
-                        OpenMPStrategy omp_strat(threads_per_process_, block_size_);
-                        omp_strat.template execute<M>(D, A, B, n, m, dim);
-                    } else {
-                        BlockedStrategy blocked(block_size_);
-                        blocked.template execute<M>(D, A, B, n, m, dim);
-                    }
+                OpenMPStrategy omp_strat(threads_per_process_, block_size_);
+                omp_strat.template execute_with_constraint<CT, R, S, M>(
+                    D, A, B, n, m, dim, window);
+            } else {
+                BlockedStrategy blocked(block_size_);
+                blocked.template execute_with_constraint<CT, R, S, M>(
+                    D, A, B, n, m, dim, window);
+            }
 #else
                     BlockedStrategy blocked(block_size_);
-                    blocked.template execute<M>(D, A, B, n, m, dim);
+                    blocked.template execute_with_constraint<CT, R, S, M>(
+                            D, A, B, n, m, dim, window);
 #endif
                     return;
                 }
 
 #ifdef USE_OPENMP
                 if (threads_per_process_ > 0) {
-                    omp_set_num_threads(threads_per_process_);
-                }
+            omp_set_num_threads(threads_per_process_);
+        }
 #endif
 
                 int n_blocks = (n + block_size_ - 1) / block_size_;
@@ -164,160 +170,17 @@ namespace dtw_accelerator {
                     // Process assigned blocks with OpenMP parallelization
                     if (!my_blocks.empty()) {
 #ifdef USE_OPENMP
-#pragma omp parallel for schedule(dynamic, 1)
+#pragma omp parallel for schedule(dynamic, 1) if(threads_per_process_ > 0)
 #endif
                         for (size_t idx = 0; idx < my_blocks.size(); ++idx) {
                             int bi = my_blocks[idx].first;
                             int bj = my_blocks[idx].second;
-                            this->process_block<M>(D, A, B, bi, bj, n, m, dim, block_size_);
+                            this->process_block_with_constraint<CT, R, S, M>(
+                                    D, A, B, bi, bj, n, m, dim, block_size_, window);
                         }
                     }
 
                     // Exchange boundaries using MPI_Bcast
-                    for (int bi = start_bi; bi <= end_bi; ++bi) {
-                        int bj = wave - bi;
-                        if (bj >= 0 && bj < m_blocks) {
-                            int block_owner = (bi - start_bi) % size;
-                            broadcast_block_boundaries(D, bi, bj, n, m, block_owner,
-                                                       row_buffer, col_buffer);
-                        }
-                    }
-
-                }
-            }
-
-            template<distance::MetricType M>
-            void execute_constrained(DoubleMatrix& D,
-                                     const DoubleTimeSeries& A,
-                                     const DoubleTimeSeries& B,
-                                     const std::vector<std::pair<int, int>>& window,
-                                     int n, int m, int dim) const {
-
-                int rank = cached_rank_;
-                int size = cached_size_;
-
-                if (size == 1) {
-                    BlockedStrategy blocked(block_size_);
-                    blocked.template execute_constrained<M>(D, A, B, window, n, m, dim);
-                    return;
-                }
-
-#ifdef USE_OPENMP
-                if (threads_per_process_ > 0) {
-            omp_set_num_threads(threads_per_process_);
-        }
-#endif
-
-                int n_blocks = (n + block_size_ - 1) / block_size_;
-                int m_blocks = (m + block_size_ - 1) / block_size_;
-
-                std::vector<double> row_buffer(m + 1);
-                std::vector<double> col_buffer(n + 1);
-
-                // Process blocks in wavefront order - same pattern as execute()
-                for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
-                    int start_bi = std::max(0, wave - m_blocks + 1);
-                    int end_bi = std::min(n_blocks - 1, wave);
-
-                    // Distribute blocks across processes
-                    std::vector<std::pair<int, int>> my_blocks;
-                    for (int bi = start_bi; bi <= end_bi; ++bi) {
-                        int bj = wave - bi;
-                        if (bj >= 0 && bj < m_blocks) {
-                            int block_idx = bi - start_bi;
-                            if (block_idx % size == rank) {
-                                my_blocks.push_back({bi, bj});
-                            }
-                        }
-                    }
-
-                    // Process assigned blocks
-#ifdef USE_OPENMP
-#pragma omp parallel for schedule(dynamic, 1) if(threads_per_process_ > 0)
-#endif
-                    for (size_t idx = 0; idx < my_blocks.size(); ++idx) {
-                        int bi = my_blocks[idx].first;
-                        int bj = my_blocks[idx].second;
-                        this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, window, block_size_);
-                    }
-
-                    // Exchange boundaries using MPI_Bcast
-                    for (int bi = start_bi; bi <= end_bi; ++bi) {
-                        int bj = wave - bi;
-                        if (bj >= 0 && bj < m_blocks) {
-                            int block_owner = (bi - start_bi) % size;
-                            broadcast_block_boundaries(D, bi, bj, n, m, block_owner,
-                                                       row_buffer, col_buffer);
-                        }
-                    }
-                }
-            }
-
-            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
-                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
-            void execute_with_constraint(DoubleMatrix& D,
-                                         const DoubleTimeSeries& A,
-                                         const DoubleTimeSeries& B,
-                                         int n, int m, int dim) const {
-                int rank = cached_rank_;
-                int size = cached_size_;
-
-                if (size == 1) {
-                    // For single process, use optimized BlockedStrategy
-#ifdef USE_OPENMP
-                    if (threads_per_process_ > 0) {
-                        OpenMPStrategy omp_strat(threads_per_process_, block_size_);
-                        omp_strat.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim);
-                    } else {
-                        BlockedStrategy blocked(block_size_);
-                        blocked.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim);
-                    }
-#else
-                    BlockedStrategy blocked(block_size_);
-                    blocked.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim);
-#endif
-                    return;
-                }
-
-#ifdef USE_OPENMP
-                if (threads_per_process_ > 0) {
-                    omp_set_num_threads(threads_per_process_);
-                }
-#endif
-
-                int n_blocks = (n + block_size_ - 1) / block_size_;
-                int m_blocks = (m + block_size_ - 1) / block_size_;
-
-                std::vector<double> row_buffer(m + 1);
-                std::vector<double> col_buffer(n + 1);
-
-                for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
-                    int start_bi = std::max(0, wave - m_blocks + 1);
-                    int end_bi = std::min(n_blocks - 1, wave);
-
-                    std::vector<std::pair<int, int>> my_blocks;
-                    for (int bi = start_bi; bi <= end_bi; ++bi) {
-                        int bj = wave - bi;
-                        if (bj >= 0 && bj < m_blocks) {
-                            int block_idx = bi - start_bi;
-                            if (block_idx % size == rank) {
-                                my_blocks.push_back({bi, bj});
-                            }
-                        }
-                    }
-
-#ifdef USE_OPENMP
-#pragma omp parallel for schedule(dynamic, 1) if(threads_per_process_ > 0)
-#endif
-                    for (size_t idx = 0; idx < my_blocks.size(); ++idx) {
-                        int bi = my_blocks[idx].first;
-                        int bj = my_blocks[idx].second;
-                        // Use the optimized base class method
-                        this->process_block_with_constraint<CT, R, S, M>(
-                                D, A, B, bi, bj, n, m, dim, block_size_);
-                    }
-
-                    // Exchange boundaries
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
@@ -337,22 +200,16 @@ namespace dtw_accelerator {
                     return {0.0, {}};  // Empty path, cost will be ignored
                 }
                 return extract_result_impl(D);
-
             }
 
             void set_block_size(int block_size) { block_size_ = block_size; }
             int get_block_size() const { return block_size_; }
 
-            std::string_view name() const { return "MPI_V1_Fixed"; }
+            std::string_view name() const { return "MPI"; }
             bool is_parallel() const { return true; }
-
-
-
         };
 
-
-
-    }
-}
+    } // namespace execution
+} // namespace dtw_accelerator
 
 #endif //DTWACCELERATOR_MPI_STRATEGY_HPP

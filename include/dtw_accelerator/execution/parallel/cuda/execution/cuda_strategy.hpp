@@ -53,7 +53,7 @@ public:
             execution::SequentialStrategy seq_strategy;
             DoubleMatrix D;
             seq_strategy.initialize_matrix(D, n, m);
-            seq_strategy.template execute<M>(D, A, B, n, m, dim);
+            seq_strategy.template execute_with_constraint<M>(D, A, B, n, m, dim);
             auto path = utils::backtrack_path(D);
             return {D(n, m), path};
         }

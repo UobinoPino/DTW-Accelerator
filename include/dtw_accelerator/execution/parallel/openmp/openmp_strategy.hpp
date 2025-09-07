@@ -18,9 +18,11 @@
 #include <omp.h>
 #endif
 
-
 namespace dtw_accelerator {
     namespace execution {
+
+        using WindowConstraint = std::vector<std::pair<int, int>>;
+
 
         // OpenMP parallel strategy
         class OpenMPStrategy : public BaseStrategy<OpenMPStrategy> {
@@ -32,15 +34,19 @@ namespace dtw_accelerator {
             explicit OpenMPStrategy(int num_threads = 0, int block_size = 64)
                     : num_threads_(num_threads), block_size_(block_size) {}
 
-            template<distance::MetricType M>
-            void execute(DoubleMatrix& D,
-                         const DoubleTimeSeries& A,
-                         const DoubleTimeSeries& B,
-                         int n, int m, int dim) const {
+            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
+            void execute_with_constraint(DoubleMatrix& D,
+                                         const DoubleTimeSeries& A,
+                                         const DoubleTimeSeries& B,
+                                         int n, int m, int dim,
+                                         const WindowConstraint* window = nullptr) const {
 
+#ifdef USE_OPENMP
                 if (num_threads_ > 0) {
-                    omp_set_num_threads(num_threads_);
-                }
+            omp_set_num_threads(num_threads_);
+        }
+#endif
 
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
@@ -50,80 +56,18 @@ namespace dtw_accelerator {
                     int start_bi = std::max(0, wave - m_blocks + 1);
                     int end_bi = std::min(n_blocks - 1, wave);
 
+#ifdef USE_OPENMP
 #pragma omp parallel for schedule(dynamic)
-                    for (int bi = start_bi; bi <= end_bi; ++bi) {
-                        int bj = wave - bi;
-                        if (bj >= 0 && bj < m_blocks) {
-                            this->process_block<M>(D, A, B, bi, bj, n, m, dim, block_size_);
-                        }
-                    }
-                }
-            }
-
-            template<distance::MetricType M>
-            void execute_constrained(DoubleMatrix& D,
-                                     const DoubleTimeSeries& A,
-                                     const DoubleTimeSeries& B,
-                                     const std::vector<std::pair<int, int>>& window,
-                                     int n, int m, int dim) const {
-
-                if (num_threads_ > 0) {
-                    omp_set_num_threads(num_threads_);
-                }
-
-                int n_blocks = (n + block_size_ - 1) / block_size_;
-                int m_blocks = (m + block_size_ - 1) / block_size_;
-
-                for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
-                    int start_bi = std::max(0, wave - m_blocks + 1);
-                    int end_bi = std::min(n_blocks - 1, wave);
-
-#pragma omp parallel for schedule(dynamic)
-                    for (int bi = start_bi; bi <= end_bi; ++bi) {
-                        int bj = wave - bi;
-                        if (bj >= 0 && bj < m_blocks) {
-                            this->process_block_constrained<M>(D, A, B, bi, bj, n, m, dim, window, block_size_);
-                        }
-                    }
-                }
-            }
-
-            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
-                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
-            void execute_with_constraint(DoubleMatrix& D,
-                                         const DoubleTimeSeries& A,
-                                         const DoubleTimeSeries& B,
-                                         int n, int m, int dim) const {
-
-                if (num_threads_ > 0) {
-                    omp_set_num_threads(num_threads_);
-                }
-
-                if constexpr (CT == constraints::ConstraintType::NONE) {
-                    // Use standard parallel execution
-                    execute<M>(D, A, B, n, m, dim);
-                    return;
-                }
-
-                int n_blocks = (n + block_size_ - 1) / block_size_;
-                int m_blocks = (m + block_size_ - 1) / block_size_;
-
-                // Process blocks in wavefront order
-                for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
-                    int start_bi = std::max(0, wave - m_blocks + 1);
-                    int end_bi = std::min(n_blocks - 1, wave);
-
-#pragma omp parallel for schedule(dynamic)
+#endif
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
                             this->process_block_with_constraint<CT, R, S, M>(
-                                    D, A, B, bi, bj, n, m, dim, block_size_);
+                                    D, A, B, bi, bj, n, m, dim, block_size_, window);
                         }
                     }
                 }
             }
-
 
             void set_num_threads(int threads) { num_threads_ = threads; }
             int get_num_threads() const { return num_threads_; }
@@ -134,9 +78,6 @@ namespace dtw_accelerator {
             bool is_parallel() const { return true; }
         };
 
-
-
-    }
-}
-
-#endif //DTWACCELERATOR_OPENMP_STRATEGY_HPP
+    } // namespace execution
+} // namespace dtw_accelerator
+#endif

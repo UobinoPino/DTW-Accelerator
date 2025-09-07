@@ -13,15 +13,19 @@
 namespace dtw_accelerator {
     namespace concepts {
 
-// Concept for types that can be used as DTW matrices
+        // Forward declaration for WindowConstraint
+        using WindowConstraint = std::vector<std::pair<int, int>>;
+
+
+        // Concept for types that can be used as DTW matrices
         template<typename T>
         concept DTWMatrix = requires(T matrix, size_t i, size_t j, double value) {
-    { matrix.resize(i, j, value) } -> std::same_as<void>;
-{ matrix(i, j) } -> std::convertible_to<double>;
-{ matrix(i, j) = value } -> std::same_as<double&>;
-{ matrix.rows() } -> std::convertible_to<size_t>;
-{ matrix.cols() } -> std::convertible_to<size_t>;
-};
+            { matrix.resize(i, j, value) } -> std::same_as<void>;
+            { matrix(i, j) } -> std::convertible_to<double>;
+            { matrix(i, j) = value } -> std::same_as<double&>;
+            { matrix.rows() } -> std::convertible_to<size_t>;
+            { matrix.cols() } -> std::convertible_to<size_t>;
+            };
 
 // Base concept for all execution strategies
 template<typename Strategy>
@@ -30,14 +34,17 @@ concept ExecutionStrategy = requires(
 DoubleMatrix& D,
 const DoubleTimeSeries& A,
 const DoubleTimeSeries& B,
-int n, int m, int dim)
+int n, int m, int dim,
+const WindowConstraint* window)
 {
 // Required: Initialize the DTW matrix
 { strategy.initialize_matrix(D, n, m) } -> std::same_as<void>;
 
 // Required: Execute DTW computation
-{ strategy.template execute<distance::MetricType::EUCLIDEAN>(
-        D, A, B, n, m, dim) } -> std::same_as<void>;
+{ strategy.template execute_with_constraint<
+        constraints::ConstraintType::NONE, 1, 2.0,
+        distance::MetricType::EUCLIDEAN>(
+        D, A, B, n, m, dim, window) } -> std::same_as<void>;
 
 // Required: Extract result and path
 { strategy.extract_result(D) } ->
@@ -48,37 +55,6 @@ std::convertible_to<std::pair<double, std::vector<std::pair<int, int>>>>;
 { strategy.is_parallel() } -> std::convertible_to<bool>;
 };
 
-// Concept for strategies that support constrained DTW
-template<typename Strategy>
-concept ConstrainedExecutionStrategy = ExecutionStrategy<Strategy> &&
-                                       requires(
-                                               Strategy strategy,
-DoubleMatrix& D,
-const DoubleTimeSeries& A,
-const DoubleTimeSeries& B,
-const std::vector<std::pair<int, int>>& window,
-int n, int m, int dim)
-{
-// Required: Execute constrained DTW
-{ strategy.template execute_constrained<distance::MetricType::EUCLIDEAN>(
-        D, A, B, window, n, m, dim) } -> std::same_as<void>;
-};
-
-// Concept for strategies that support constraint templates
-template<typename Strategy>
-concept TemplatedConstraintStrategy = ExecutionStrategy<Strategy> &&
-                                      requires(
-                                              Strategy strategy,
-DoubleMatrix& D,
-const DoubleTimeSeries& A,
-const DoubleTimeSeries& B,
-int n, int m, int dim)
-{
-// Support Sakoe-Chiba and Itakura constraints
-{ strategy.template execute_with_constraint<
-        constraints::ConstraintType::SAKOE_CHIBA, 1, 2.0,
-        distance::MetricType::EUCLIDEAN>(D, A, B, n, m, dim) } -> std::same_as<void>;
-};
 
 // Concept for parallel strategies with configurable resources
 template<typename Strategy>
@@ -106,8 +82,11 @@ template<typename Strategy, distance::MetricType M>
 requires requires(Strategy s, DoubleMatrix& D,
                   const DoubleTimeSeries& A,
                   const DoubleTimeSeries& B,
-                  int n, int m, int dim) {
-    { s.template execute<M>(D, A, B, n, m, dim) } -> std::same_as<void>;
+                  int n, int m, int dim,
+                  const WindowConstraint* window) {
+    { s.template execute_with_constraint<
+                constraints::ConstraintType::NONE, 1, 2.0, M>(
+                D, A, B, n, m, dim, window) } -> std::same_as<void>;
 }
 struct supports_metric<Strategy, M> : std::true_type {};
 

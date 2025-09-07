@@ -32,6 +32,9 @@ namespace dtw_accelerator {
     using distance::MetricType;
     using constraints::ConstraintType;
 
+    using WindowConstraint = std::vector<std::pair<int, int>>;
+
+
     // Re-export TimeSeries types
     using DoubleTimeSeries = TimeSeries<double>;
     using FloatTimeSeries = TimeSeries<float>;
@@ -160,7 +163,7 @@ namespace dtw_accelerator {
     }
 
     template<MetricType M = MetricType::EUCLIDEAN, typename Strategy>
-    requires concepts::ConstrainedExecutionStrategy<Strategy>
+    requires concepts::ExecutionStrategy<Strategy>
     inline auto dtw_constrained_custom(const DoubleTimeSeries& A,
                                        const DoubleTimeSeries& B,
                                        const std::vector<std::pair<int, int>>& window,
