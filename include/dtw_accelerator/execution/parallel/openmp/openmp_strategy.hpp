@@ -48,6 +48,39 @@ namespace dtw_accelerator {
         }
 #endif
 
+                if (window != nullptr) {
+                    // For windowed DTW (FastDTW case), use diagonal-based parallelization
+                    // This is much more for sparse windows
+
+                    // Group window cells by their diagonal (i+j)
+                    std::map<int, std::vector<std::pair<int, int>>> diagonals;
+                    for (const auto& [i, j] : *window) {
+                        diagonals[i + j].push_back({i, j});
+                    }
+
+                    // Process diagonals in order (ensures dependencies are met)
+                    for (const auto& [diag_sum, cells] : diagonals) {
+                        // Parallelize within each diagonal (no dependencies)
+#ifdef USE_OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+                        for (size_t idx = 0; idx < cells.size(); ++idx) {
+                            int i = cells[idx].first;
+                            int j = cells[idx].second;
+                            int i_idx = i + 1;
+                            int j_idx = j + 1;
+
+                            D(i_idx, j_idx) = utils::compute_cell_cost<M>(
+                                    A[i], B[j], dim,
+                                    D(i_idx-1, j_idx-1),
+                                    D(i_idx, j_idx-1),
+                                    D(i_idx-1, j_idx)
+                            );
+                        }
+                    }
+                    return;
+                }
+
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 

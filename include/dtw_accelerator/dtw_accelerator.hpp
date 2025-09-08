@@ -11,8 +11,6 @@
 #include "dtw_accelerator/execution/execution_strategies.hpp"
 #include "dtw_accelerator/algorithms/dtw_generic.hpp"
 #include "dtw_accelerator/algorithms/fastdtw_generic.hpp"
-#include "dtw_accelerator/algorithms/dtw_constrained_generic.hpp"
-#include "dtw_accelerator/algorithms/dtw_with_constraint_generic.hpp"
 
 
 // CUDA integration (not yet available)

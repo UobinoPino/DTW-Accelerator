@@ -36,6 +36,24 @@ namespace dtw_accelerator {
                                          int n, int m, int dim,
                                          const WindowConstraint* window = nullptr) const {
 
+
+
+                if (window != nullptr) {
+                    // For sparse windows (FastDTW), don't use blocking
+                    // Direct iteration is more efficient
+                    for (const auto& [i, j] : *window) {
+                        int i_idx = i + 1;
+                        int j_idx = j + 1;
+                        D(i_idx, j_idx) = utils::compute_cell_cost<M>(
+                                A[i], B[j], dim,
+                                D(i_idx-1, j_idx-1),
+                                D(i_idx, j_idx-1),
+                                D(i_idx-1, j_idx)
+                        );
+                    }
+                    return;
+                }
+
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 

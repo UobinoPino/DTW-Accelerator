@@ -5,6 +5,7 @@
 #include <vector>
 #include <utility>
 #include <algorithm>
+#include <omp.h>
 
 namespace dtw_accelerator {
     namespace path {
@@ -20,6 +21,7 @@ namespace dtw_accelerator {
 
             TimeSeries<T> result(new_size, dim, 0.0);
 
+         //   #pragma omp parallel for
             for (size_t i = 0; i < new_size; ++i) {
                 for (size_t d = 0; d < dim; ++d) {
                     if (2*i + 1 < n) {
