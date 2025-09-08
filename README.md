@@ -1,4 +1,4 @@
-# DTW Accelerator v1.0 - Concepts-Based Architecture
+# DTW Accelerator v1.0
 
 A high-performance Dynamic Time Warping (DTW) library with a modern C++20 concepts-based architecture supporting multiple parallel backends.
 
