@@ -1,3 +1,14 @@
+/**
+ * @file base_strategy.hpp
+ * @brief Base class template for DTW execution strategies using CRTP
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file contains the base class template that provides common functionality
+ * for all DTW execution strategies using the Curiously Recurring Template Pattern
+ * (CRTP) for static polymorphism and compile-time optimization.
+ */
+
 #ifndef DTWACCELERATOR_BASE_STRATEGY_HPP
 #define DTWACCELERATOR_BASE_STRATEGY_HPP
 #include "dtw_accelerator/core/dtw_concepts.hpp"
@@ -21,22 +32,47 @@
 
 
 namespace dtw_accelerator {
+
+    /**
+     * @namespace execution
+     * @brief DTW execution strategies and their implementations
+     */
     namespace execution {
 
+        /// @brief Type alias for window constraint representation
         using WindowConstraint = std::vector<std::pair<int, int>>;
 
 
-        // Base class for common functionality (CRTP pattern for static polymorphism)
+        /**
+         * @brief Base class template for DTW execution strategies
+         * @tparam Derived The derived strategy class (CRTP pattern)
+         *
+         * This class provides common functionality for all execution strategies
+         * including matrix initialization, result extraction, and block processing.
+         * It uses the Curiously Recurring Template Pattern (CRTP) to achieve
+         * static polymorphism without virtual function overhead.
+         */
         template<typename Derived>
         class BaseStrategy {
         protected:
-            // Common initialization for all CPU strategies
+            /**
+            * @brief Initialize the DTW cost matrix with default values
+            * @param D Cost matrix to initialize
+            * @param n Number of rows (first series length)
+            * @param m Number of columns (second series length)
+            *
+            * Sets all matrix elements to infinity except D(0,0) = 0.0
+            */
             void initialize_matrix_impl(DoubleMatrix& D, int n, int m) const {
                 D.resize(n + 1, m + 1, std::numeric_limits<double>::infinity());
                 D(0, 0) = 0.0;
             }
 
-            // Common result extraction
+            /**
+             * @brief Extract the final DTW result from the cost matrix
+             * @param D Computed cost matrix
+             * @return Pair of (total cost, optimal warping path)
+             */
             std::pair<double, std::vector<std::pair<int, int>>>
             extract_result_impl(const DoubleMatrix& D) const {
                 int n = D.rows() - 1;
@@ -45,7 +81,19 @@ namespace dtw_accelerator {
                 return {D(n, m), path};
             }
 
-
+            /**
+           * @brief Process a single block in the DTW matrix
+           * @tparam M Distance metric type
+           * @param D Cost matrix
+           * @param A First time series
+           * @param B Second time series
+           * @param bi Block row index
+           * @param bj Block column index
+           * @param n Total rows
+           * @param m Total columns
+           * @param dim Number of dimensions
+           * @param block_size Size of processing block
+           */
             template<distance::MetricType M>
             void process_block(DoubleMatrix& D,
                                const DoubleTimeSeries& A,
@@ -67,6 +115,22 @@ namespace dtw_accelerator {
                 }
             }
 
+            /**
+            * @brief Process a block with window constraints
+            * @tparam M Distance metric type
+            * @param D Cost matrix
+            * @param A First time series
+            * @param B Second time series
+            * @param bi Block row index
+            * @param bj Block column index
+            * @param n Total rows
+            * @param m Total columns
+            * @param dim Number of dimensions
+            * @param window Valid cell coordinates
+            * @param block_size Size of processing block
+            *
+            * Only processes cells that fall within both the block and the window
+            */
             template<distance::MetricType M>
             void process_block_constrained(DoubleMatrix& D,
                                       const DoubleTimeSeries& A,
@@ -96,6 +160,23 @@ namespace dtw_accelerator {
                 }
             }
 
+            /**
+             * @brief Process a block with global path constraints
+             * @tparam CT Constraint type (NONE, SAKOE_CHIBA, ITAKURA)
+             * @tparam R Sakoe-Chiba band radius
+             * @tparam S Itakura parallelogram slope
+             * @tparam M Distance metric type
+             * @param D Cost matrix
+             * @param A First time series
+             * @param B Second time series
+             * @param bi Block row index
+             * @param bj Block column index
+             * @param n Total rows
+             * @param m Total columns
+             * @param dim Number of dimensions
+             * @param block_size Size of processing block
+             * @param window Optional custom window constraint
+             */
             template<constraints::ConstraintType CT, int R, double S,
                     distance::MetricType M>
             void process_block_with_constraint(DoubleMatrix& D,
@@ -212,8 +293,19 @@ namespace dtw_accelerator {
 
 
         public:
-
-            // Overload without window
+            /**
+            * @brief Execute DTW with constraints (without window)
+            * @tparam CT Constraint type
+            * @tparam R Sakoe-Chiba radius (template parameter)
+            * @tparam S Itakura slope (template parameter)
+            * @tparam M Distance metric type
+            * @param D Cost matrix
+            * @param A First time series
+            * @param B Second time series
+            * @param n Number of points in A
+            * @param m Number of points in B
+            * @param dim Dimensions per point
+            */
             template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                     distance::MetricType M = distance::MetricType::EUCLIDEAN>
             void execute_with_constraint(DoubleMatrix& D,
@@ -224,7 +316,20 @@ namespace dtw_accelerator {
                 execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim, nullptr);
             }
 
-            // Overload with window (for FastDTW)
+            /**
+             * @brief Execute DTW with constraints (with optional window)
+             * @tparam CT Constraint type
+             * @tparam R Sakoe-Chiba radius
+             * @tparam S Itakura slope
+             * @tparam M Distance metric type
+             * @param D Cost matrix
+             * @param A First time series
+             * @param B Second time series
+             * @param n Number of points in A
+             * @param m Number of points in B
+             * @param dim Dimensions per point
+             * @param window Optional window constraint for FastDTW
+             */
             template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                     distance::MetricType M = distance::MetricType::EUCLIDEAN>
             void execute_with_constraint(DoubleMatrix& D,

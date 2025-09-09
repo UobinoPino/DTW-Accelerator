@@ -1,3 +1,13 @@
+/**
+ * @file dtw_core_kernels.cu
+ * @brief CUDA kernel implementations for core DTW computations
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file implements the main CUDA kernels for DTW computation using
+ * a tiled wavefront approach for efficient GPU utilization and memory access.
+ */
+
 #include "dtw_core_kernels.cuh"
 #include "../core/device_functions.cuh"
 #include <algorithm>
@@ -7,6 +17,27 @@ namespace dtw_accelerator {
         namespace cuda {
             namespace kernels {
 
+                /**
+                * @brief Tiled wavefront kernel for DTW computation
+                * @tparam M Distance metric type
+                * @tparam TILE_SIZE Size of tiles for processing
+                * @param D Cost matrix in device memory
+                * @param A First time series in device memory
+                * @param B Second time series in device memory
+                * @param n Length of first series
+                * @param m Length of second series
+                * @param dim Number of dimensions
+                * @param wave Current wavefront index
+                * @param n_tiles Number of tiles in row dimension
+                * @param m_tiles Number of tiles in column dimension
+                *
+                * This kernel processes DTW computation in tiles using a wavefront
+                * pattern. Each block processes one tile, and tiles are processed
+                * in diagonal waves to ensure dependencies are satisfied.
+                *
+                * The kernel uses shared memory for boundary values to minimize
+                * global memory accesses and improve performance.
+                */
                 template<MetricType M, int TILE_SIZE>
                 __global__ void dtw_tile_wavefront(
                         double* __restrict__ D,
@@ -103,7 +134,7 @@ namespace dtw_accelerator {
                     }
                 }
 
-// Explicit instantiations
+                // Explicit template instantiations for all supported metrics and tile sizes
                 template __global__ void dtw_tile_wavefront<MetricType::EUCLIDEAN, 32>
                         (double*, const double*, const double*, int, int, int, int, int, int);
                 template __global__ void dtw_tile_wavefront<MetricType::EUCLIDEAN, 64>

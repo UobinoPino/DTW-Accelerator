@@ -1,10 +1,34 @@
+/**
+ * @file path_kernels.cu
+ * @brief CUDA kernel implementations for optimal path extraction
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file implements CUDA kernels for extracting the optimal warping
+ * path from the computed DTW cost matrix through backtracking.
+ */
+
 #include "path_kernels.cuh"
 
 namespace dtw_accelerator {
     namespace parallel {
         namespace cuda {
             namespace kernels {
-
+                /**
+                * @brief Backtrack through cost matrix to find optimal path
+                * @param D Cost matrix in device memory
+                * @param path_i Output array for path row indices
+                * @param path_j Output array for path column indices
+                * @param path_length Output for actual path length
+                * @param n Number of rows (excluding padding)
+                * @param m Number of columns (excluding padding)
+                *
+                * This kernel performs sequential backtracking from D[n][m] to D[0][0]
+                * to extract the optimal warping path. It should be launched with a
+                * single thread as backtracking is inherently sequential.
+                *
+                * The path is initially stored in reverse order (from end to start).
+                */
                 __global__ void backtrack_path(
                         const double* __restrict__ D,
                         int* __restrict__ path_i,
@@ -47,6 +71,16 @@ namespace dtw_accelerator {
                     }
                 }
 
+                /**
+                 * @brief Reverse the path array to get forward order
+                 * @param path_i Path row indices to reverse
+                 * @param path_j Path column indices to reverse
+                 * @param path_length Length of the path
+                 *
+                 * This kernel reverses the path arrays in-place to convert
+                 * from backward order (end to start) to forward order (start to end).
+                 * It can be launched with multiple threads for parallel reversal.
+                 */
                 __global__ void reverse_path(
                         int* __restrict__ path_i,
                         int* __restrict__ path_j,
