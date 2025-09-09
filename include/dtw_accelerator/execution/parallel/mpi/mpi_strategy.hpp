@@ -1,3 +1,13 @@
+/**
+ * @file mpi_strategy.hpp
+ * @brief MPI distributed DTW execution strategy
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file implements a distributed DTW algorithm using MPI
+ * for execution across multiple nodes in a cluster.
+ */
+
 #ifndef DTWACCELERATOR_MPI_STRATEGY_HPP
 #define DTWACCELERATOR_MPI_STRATEGY_HPP
 
@@ -25,19 +35,57 @@
 namespace dtw_accelerator {
     namespace execution {
 
+        /// @brief Type alias for window constraints
         using WindowConstraint = std::vector<std::pair<int, int>>;
 
-
+        /**
+        * @brief MPI distributed strategy for cluster execution
+        *
+        * This strategy distributes DTW computation across multiple
+        * MPI processes, potentially on different nodes. It uses:
+        *
+        * - **Block distribution**: The DTW matrix is divided into blocks
+        *   that are distributed across processes
+        * - **Wavefront synchronization**: Processes synchronize after
+        *   each wave to exchange boundary values
+        * - **Hybrid parallelism**: Can use OpenMP within each MPI process
+        *   for multi-level parallelism
+        *
+        * The strategy is most effective for very large DTW problems
+        * that don't fit in a single node's memory or require more
+        * computational power than a single node can provide.
+        */
         class MPIStrategy : public BaseStrategy<MPIStrategy> {
         private:
+            /// @brief Block size for distribution
             int block_size_;
+
+            /// @brief OpenMP threads per MPI process
             int threads_per_process_;
+
+            /// @brief MPI communicator
             MPI_Comm communicator_;
 
-            // Cache for avoiding repeated MPI calls
+            /// @brief Cached MPI rank
             mutable int cached_rank_ = -1;
+
+            /// @brief Cached MPI size
             mutable int cached_size_ = -1;
 
+            /**
+             * @brief Broadcast block boundaries between processes
+             * @param D Cost matrix
+             * @param bi Block row index
+             * @param bj Block column index
+             * @param n Total rows
+             * @param m Total columns
+             * @param owner Process that owns this block
+             * @param row_buffer Buffer for row communication
+             * @param col_buffer Buffer for column communication
+             *
+             * Exchanges boundary values between processes to maintain
+             * data dependencies across block boundaries.
+             */
             void broadcast_block_boundaries(DoubleMatrix& D,
                                             int bi, int bj, int n, int m, int owner,
                                             std::vector<double>& row_buffer,
@@ -93,13 +141,35 @@ namespace dtw_accelerator {
             }
 
         public:
+            /**
+             * @brief Construct MPI strategy
+             * @param block_size Block size for distribution
+             * @param threads OpenMP threads per process (0 for none)
+             * @param comm MPI communicator
+             */
             explicit MPIStrategy(int block_size = 64, int threads = 0, MPI_Comm comm = MPI_COMM_WORLD)
                     : block_size_(block_size), threads_per_process_(threads), communicator_(comm) {
                 MPI_Comm_rank(communicator_, &cached_rank_);
                 MPI_Comm_size(communicator_, &cached_size_);
             }
 
-            // Unified execute method using execute_with_constraint
+            /**
+             * @brief Execute distributed DTW with constraints
+             * @tparam CT Constraint type
+             * @tparam R Sakoe-Chiba band radius
+             * @tparam S Itakura parallelogram slope
+             * @tparam M Distance metric type
+             * @param D Cost matrix (complete on all processes)
+             * @param A First time series
+             * @param B Second time series
+             * @param n Length of series A
+             * @param m Length of series B
+             * @param dim Number of dimensions per point
+             * @param window Optional window constraint
+             *
+             * Distributes blocks across MPI processes and coordinates
+             * execution with boundary exchanges.
+             */
             template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                     distance::MetricType M = distance::MetricType::EUCLIDEAN>
             void execute_with_constraint(DoubleMatrix& D,
@@ -192,6 +262,14 @@ namespace dtw_accelerator {
                 }
             }
 
+            /**
+            * @brief Extract result (only valid on rank 0)
+            * @param D Computed cost matrix
+            * @return Pair of (total cost, optimal path)
+            *
+            * Only rank 0 returns the valid result; other ranks
+            * return empty results.
+            */
             std::pair<double, std::vector<std::pair<int, int>>>
             extract_result(const DoubleMatrix& D) const {
                 int rank = cached_rank_;
@@ -202,10 +280,28 @@ namespace dtw_accelerator {
                 return extract_result_impl(D);
             }
 
+            /**
+            * @brief Set block size
+            * @param block_size New block size
+            */
             void set_block_size(int block_size) { block_size_ = block_size; }
+
+            /**
+             * @brief Get current block size
+             * @return Block size
+             */
             int get_block_size() const { return block_size_; }
 
+            /**
+             * @brief Get strategy name
+             * @return "MPI"
+             */
             std::string_view name() const { return "MPI"; }
+
+            /**
+             * @brief Check if strategy is parallel
+             * @return True (distributed parallel execution)
+             */
             bool is_parallel() const { return true; }
         };
 

@@ -1,3 +1,13 @@
+/**
+ * @file execution_strategies.hpp
+ * @brief Include file for all execution strategy implementations
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file includes all available execution strategies for DTW
+ * computation, providing a single include point for strategy headers.
+ */
+
 #ifndef DTW_ACCELERATOR_EXECUTION_STRATEGIES_HPP
 #define DTW_ACCELERATOR_EXECUTION_STRATEGIES_HPP
 

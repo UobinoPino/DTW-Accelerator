@@ -1,3 +1,13 @@
+/**
+ * @file dtw_generic.hpp
+ * @brief Generic DTW algorithm implementation with concepts
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file contains the main DTW algorithm that works with any
+ * execution strategy satisfying the ExecutionStrategy concept.
+ */
+
 #ifndef DTW_ACCELERATOR_DTW_ALGORITHM_HPP
 #define DTW_ACCELERATOR_DTW_ALGORITHM_HPP
 
@@ -11,7 +21,24 @@
 
 namespace dtw_accelerator {
 
-// Generic DTW algorithm for any execution strategy satisfying the concept
+    /**
+    * @brief Generic DTW algorithm for any execution strategy
+    * @tparam M Distance metric type
+    * @tparam CT Constraint type
+    * @tparam R Sakoe-Chiba band radius
+    * @tparam S Itakura parallelogram slope
+    * @tparam Strategy Execution strategy type (must satisfy ExecutionStrategy concept)
+    * @param A First time series
+    * @param B Second time series
+    * @param strategy Execution strategy instance
+    * @param window Optional window constraint
+    * @return Pair of (DTW distance, optimal warping path)
+    *
+    * This is the main entry point for DTW computation. It accepts any
+    * execution strategy that satisfies the ExecutionStrategy concept,
+    * enabling seamless switching between sequential, parallel, and
+    * accelerated implementations.
+    */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             constraints::ConstraintType CT = constraints::ConstraintType::NONE,
             int R = 1, double S = 2.0,
@@ -46,7 +73,15 @@ namespace dtw_accelerator {
         return strategy.extract_result(D);
     }
 
-// Convenience function for unconstrained DTW
+    /**
+     * @brief Convenience function for unconstrained DTW
+     * @tparam M Distance metric type
+     * @tparam Strategy Execution strategy type
+     * @param A First time series
+     * @param B Second time series
+     * @param strategy Execution strategy instance
+     * @return Pair of (DTW distance, optimal warping path)
+     */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             concepts::ExecutionStrategy Strategy>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_unconstrained(
@@ -57,7 +92,16 @@ namespace dtw_accelerator {
                 A, B, std::forward<Strategy>(strategy), nullptr);
     }
 
-// Convenience function for windowed DTW (used by FastDTW)
+    /**
+     * @brief Convenience function for windowed DTW (used by FastDTW)
+     * @tparam M Distance metric type
+     * @tparam Strategy Execution strategy type
+     * @param A First time series
+     * @param B Second time series
+     * @param window Window constraint defining valid cells
+     * @param strategy Execution strategy instance
+     * @return Pair of (DTW distance, optimal warping path)
+     */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             concepts::ExecutionStrategy Strategy>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_windowed(
@@ -69,7 +113,16 @@ namespace dtw_accelerator {
                 A, B, std::forward<Strategy>(strategy), &window);
     }
 
-// Convenience function for Sakoe-Chiba constraint
+    /**
+     * @brief Convenience function for Sakoe-Chiba constrained DTW
+     * @tparam M Distance metric type
+     * @tparam R Band radius
+     * @tparam Strategy Execution strategy type
+     * @param A First time series
+     * @param B Second time series
+     * @param strategy Execution strategy instance
+     * @return Pair of (DTW distance, optimal warping path)
+     */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             int R = 1,
             concepts::ExecutionStrategy Strategy>
@@ -81,7 +134,16 @@ namespace dtw_accelerator {
                 A, B, std::forward<Strategy>(strategy), nullptr);
     }
 
-// Convenience function for Itakura constraint
+    /**
+     * @brief Convenience function for Itakura constrained DTW
+     * @tparam M Distance metric type
+     * @tparam S Maximum slope parameter
+     * @tparam Strategy Execution strategy type
+     * @param A First time series
+     * @param B Second time series
+     * @param strategy Execution strategy instance
+     * @return Pair of (DTW distance, optimal warping path)
+     */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN,
             double S = 2.0,
             concepts::ExecutionStrategy Strategy>
@@ -93,7 +155,13 @@ namespace dtw_accelerator {
                 A, B, std::forward<Strategy>(strategy), nullptr);
     }
 
-// Sequential DTW
+    /**
+     * @brief Sequential DTW computation
+     * @tparam M Distance metric type
+     * @param A First time series
+     * @param B Second time series
+     * @return Pair of (DTW distance, optimal warping path)
+     */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_sequential(
             const DoubleTimeSeries& A,
@@ -101,7 +169,14 @@ namespace dtw_accelerator {
         return dtw_unconstrained<M>(A, B, execution::SequentialStrategy{});
     }
 
-// Blocked DTW
+    /**
+     * @brief Blocked DTW computation for better cache locality
+     * @tparam M Distance metric type
+     * @param A First time series
+     * @param B Second time series
+     * @param block_size Size of cache-friendly blocks
+     * @return Pair of (DTW distance, optimal warping path)
+     */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_blocked(
             const DoubleTimeSeries& A,
@@ -111,31 +186,57 @@ namespace dtw_accelerator {
     }
 
 #ifdef USE_OPENMP
-    // OpenMP DTW
-template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
-inline std::pair<double, std::vector<std::pair<int, int>>> dtw_openmp(
-        const DoubleTimeSeries& A,
-        const DoubleTimeSeries& B,
-        int num_threads = 0,
-        int block_size = 64) {
-    return dtw_unconstrained<M>(A, B, execution::OpenMPStrategy{num_threads, block_size});
-}
+    /**
+     * @brief OpenMP parallel DTW computation
+     * @tparam M Distance metric type
+     * @param A First time series
+     * @param B Second time series
+     * @param num_threads Number of OpenMP threads (0 for auto)
+     * @param block_size Size of blocks for wavefront processing
+     * @return Pair of (DTW distance, optimal warping path)
+     */
+    template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
+    inline std::pair<double, std::vector<std::pair<int, int>>> dtw_openmp(
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
+            int num_threads = 0,
+            int block_size = 64) {
+        return dtw_unconstrained<M>(A, B, execution::OpenMPStrategy{num_threads, block_size});
+    }
 #endif
 
 #ifdef USE_MPI
-    // MPI DTW
-template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
-inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
-        const DoubleTimeSeries& A,
-        const DoubleTimeSeries& B,
-        int block_size = 64,
-        int threads_per_process = 0,
-        MPI_Comm comm = MPI_COMM_WORLD) {
-    return dtw_unconstrained<M>(A, B, execution::MPIStrategy{block_size, threads_per_process, comm});
-}
+    /**
+     * @brief MPI distributed DTW computation
+     * @tparam M Distance metric type
+     * @param A First time series
+     * @param B Second time series
+     * @param block_size Size of blocks for distribution
+     * @param threads_per_process OpenMP threads per MPI process
+     * @param comm MPI communicator
+     * @return Pair of (DTW distance, optimal warping path)
+     */
+    template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
+    inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
+            const DoubleTimeSeries& A,
+            const DoubleTimeSeries& B,
+            int block_size = 64,
+            int threads_per_process = 0,
+            MPI_Comm comm = MPI_COMM_WORLD) {
+        return dtw_unconstrained<M>(A, B, execution::MPIStrategy{block_size, threads_per_process, comm});
+    }
 #endif
 
-// Auto-selecting DTW
+    /**
+    * @brief Auto-selecting DTW with optimal backend selection
+    * @tparam M Distance metric type
+    * @param A First time series
+    * @param B Second time series
+    * @return Pair of (DTW distance, optimal warping path)
+    *
+    * Automatically selects the best execution strategy based on
+    * problem size and available hardware accelerators.
+    */
     template<distance::MetricType M = distance::MetricType::EUCLIDEAN>
     inline std::pair<double, std::vector<std::pair<int, int>>> dtw_auto(
             const DoubleTimeSeries& A,
@@ -144,15 +245,7 @@ inline std::pair<double, std::vector<std::pair<int, int>>> dtw_mpi(
         int n = A.size();
         int m = B.size();
 
-        // CUDA check for large sequences
-#ifdef USE_CUDA
-        if (n >= 1000 && m >= 1000) {
-        // Delegate to specialized CUDA implementation
-        // return parallel::cuda::dtw_cuda<M>(A, B);
-    }
-#endif
-
-        // Use CPU auto-strategy for everything else
+        // Use CPU auto-strategy
         return dtw_unconstrained<M>(A, B, execution::AutoStrategy{n, m});
     }
 

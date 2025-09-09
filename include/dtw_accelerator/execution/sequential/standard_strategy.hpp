@@ -1,3 +1,13 @@
+/**
+ * @file standard_strategy.hpp
+ * @brief Standard sequential DTW execution strategy
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file implements the standard sequential DTW algorithm
+ * with support for various constraints and distance metrics.
+ */
+
 #ifndef DTWACCELERATOR_SEQUENTIAL_STRATEGY_HPP
 #define DTWACCELERATOR_SEQUENTIAL_STRATEGY_HPP
 
@@ -17,12 +27,43 @@
 namespace dtw_accelerator {
     namespace execution {
 
+        /// @brief Type alias for window constraints
         using WindowConstraint = std::vector<std::pair<int, int>>;
 
 
-        // Sequential CPU strategy with unified interface
+        /**
+        * @brief Sequential CPU strategy with unified interface
+        *
+        * This class implements the standard sequential DTW algorithm
+        * with support for:
+        * - Multiple distance metrics
+        * - Global path constraints (Sakoe-Chiba, Itakura)
+        * - Window-based constraints (for FastDTW)
+        *
+        * The implementation uses a simple nested loop approach
+        * that processes the DTW matrix row by row.
+        */
         class SequentialStrategy : public BaseStrategy<SequentialStrategy> {
         public:
+
+            /**
+             * @brief Execute DTW with constraints
+             * @tparam CT Constraint type
+             * @tparam R Sakoe-Chiba band radius
+             * @tparam S Itakura parallelogram slope
+             * @tparam M Distance metric type
+             * @param D Cost matrix to fill
+             * @param A First time series
+             * @param B Second time series
+             * @param n Length of series A
+             * @param m Length of series B
+             * @param dim Number of dimensions per point
+             * @param window Optional window constraint
+             *
+             * This method implements the core DTW computation with support
+             * for various constraint types. The constraint type is specified
+             * at compile-time for optimal performance.
+             */
             template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                     distance::MetricType M = distance::MetricType::EUCLIDEAN>
             void execute_with_constraint(DoubleMatrix& D,
@@ -109,7 +150,16 @@ namespace dtw_accelerator {
                 }
             }
 
+            /**
+            * @brief Get strategy name
+            * @return "Sequential"
+            */
             std::string_view name() const { return "Sequential"; }
+
+            /**
+             * @brief Check if strategy is parallel
+             * @return False (sequential execution)
+             */
             bool is_parallel() const { return false; }
         };
 

@@ -1,3 +1,14 @@
+/**
+ * @file blocked_strategy.hpp
+ * @brief Cache-optimized blocked DTW execution strategy
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file implements a cache-aware blocked DTW algorithm that
+ * processes the cost matrix in cache-friendly blocks to improve
+ * memory access patterns and performance.
+ */
+
 #ifndef DTWACCELERATOR_BLOCKED_STRATEGY_HPP
 #define DTWACCELERATOR_BLOCKED_STRATEGY_HPP
 
@@ -17,17 +28,51 @@
 namespace dtw_accelerator {
     namespace execution {
 
+        /// @brief Type alias for window constraints
         using WindowConstraint = std::vector<std::pair<int, int>>;
 
-
-        // Blocked execution strategy for better cache locality
+        /**
+         * @brief Blocked execution strategy for better cache locality
+         *
+         * This strategy divides the DTW matrix into square blocks and
+         * processes them in wavefront order to maintain dependencies
+         * while improving cache utilization. The block size should be
+         * tuned based on the cache size of the target processor.
+         *
+         * Benefits:
+         * - Better temporal locality within blocks
+         * - Reduced cache misses for large matrices
+         * - Improved memory bandwidth utilization
+         */
         class BlockedStrategy : public BaseStrategy<BlockedStrategy> {
         private:
+            /// @brief Size of cache-friendly blocks
             int block_size_;
 
         public:
+            /**
+             * @brief Construct blocked strategy with specified block size
+             * @param block_size Size of cache blocks (default: 64)
+             */
             explicit BlockedStrategy(int block_size = 64) : block_size_(block_size) {}
 
+            /**
+             * @brief Execute DTW with blocking and constraints
+             * @tparam CT Constraint type
+             * @tparam R Sakoe-Chiba band radius
+             * @tparam S Itakura parallelogram slope
+             * @tparam M Distance metric type
+             * @param D Cost matrix to fill
+             * @param A First time series
+             * @param B Second time series
+             * @param n Length of series A
+             * @param m Length of series B
+             * @param dim Number of dimensions per point
+             * @param window Optional window constraint
+             *
+             * Processes the DTW matrix in cache-friendly blocks using
+             * wavefront parallelism pattern to maintain dependencies.
+             */
             template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
                     distance::MetricType M = distance::MetricType::EUCLIDEAN>
             void execute_with_constraint(DoubleMatrix& D,
@@ -72,10 +117,28 @@ namespace dtw_accelerator {
                 }
             }
 
+            /**
+             * @brief Set the block size
+             * @param block_size New block size
+             */
             void set_block_size(int block_size) { block_size_ = block_size; }
+
+            /**
+             * @brief Get the current block size
+             * @return Current block size
+             */
             int get_block_size() const { return block_size_; }
 
+            /**
+             * @brief Get strategy name
+             * @return "Blocked"
+             */
             std::string_view name() const { return "Blocked"; }
+
+            /**
+             * @brief Check if strategy is parallel
+             * @return False (sequential blocked execution)
+             */
             bool is_parallel() const { return false; }
         };
 
