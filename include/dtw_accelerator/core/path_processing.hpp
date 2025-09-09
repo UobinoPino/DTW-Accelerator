@@ -1,3 +1,13 @@
+/**
+ * @file path_processing.hpp
+ * @brief Path processing utilities for DTW algorithms
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file contains utilities for processing DTW paths including
+ * downsampling for FastDTW, path expansion, and window generation.
+ */
+
 #ifndef DTW_ACCELERATOR_PATH_PROCESSING_HPP
 #define DTW_ACCELERATOR_PATH_PROCESSING_HPP
 
@@ -8,9 +18,23 @@
 #include <omp.h>
 
 namespace dtw_accelerator {
+
+    /**
+     * @namespace path
+     * @brief Path processing utilities for DTW algorithms
+     */
     namespace path {
 
-// Downsample a time series by averaging consecutive points
+        /**
+         * @brief Downsample a time series by averaging consecutive points
+         * @tparam T Data type of the time series elements
+         * @param series Input time series to downsample
+         * @return Downsampled time series with approximately half the length
+         *
+         * This function is used in FastDTW to create coarser representations
+         * of time series. Each pair of consecutive points is averaged to
+         * produce a single point in the output.
+         */
         template<typename T = double>
         inline TimeSeries<T> downsample(const TimeSeries<T>& series) {
             if (series.length() <= 2) return series;
@@ -37,7 +61,17 @@ namespace dtw_accelerator {
             return result;
         }
 
-// Expand a path from a coarse resolution to a higher resolution
+        /**
+         * @brief Expand a path from coarse resolution to higher resolution
+         * @param path Low-resolution path to expand
+         * @param higher_n Target number of rows (series A length)
+         * @param higher_m Target number of columns (series B length)
+         * @return Expanded path with additional intermediate points
+         *
+         * Used in FastDTW to project a path computed on downsampled series
+         * back to the original resolution. Each point in the low-resolution
+         * path maps to up to 4 points in the higher resolution.
+         */
         inline std::vector<std::pair<int, int>> expand_path(
                 const std::vector<std::pair<int, int>>& path,
                 int higher_n,
@@ -45,7 +79,6 @@ namespace dtw_accelerator {
             std::vector<std::pair<int, int>> expanded;
 
             for (const auto& [i, j] : path) {
-                // Each point in the low-resolution maps to 2 points in higher resolution
                 int i_high = std::min(2*i, higher_n-1);
                 int j_high = std::min(2*j, higher_m-1);
 
@@ -65,7 +98,18 @@ namespace dtw_accelerator {
             return expanded;
         }
 
-// Get a search window around a projected path
+        /**
+        * @brief Create a search window around a projected path
+        * @param path Base path to expand around
+        * @param n Number of rows in the DTW matrix
+        * @param m Number of columns in the DTW matrix
+        * @param radius Expansion radius around the path
+        * @return Window containing all valid cells within radius of the path
+        *
+        * Used in FastDTW to constrain the search space in higher resolutions.
+        * The window includes all cells within Manhattan distance 'radius'
+        * from any point on the given path.
+        */
         inline std::vector<std::pair<int, int>> get_window(
                 const std::vector<std::pair<int, int>>& path,
                 int n, int m, int radius) {

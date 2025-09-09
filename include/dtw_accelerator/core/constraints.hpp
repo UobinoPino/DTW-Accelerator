@@ -1,3 +1,13 @@
+/**
+ * @file constraints.hpp
+ * @brief DTW path constraint implementations
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file contains implementations of global path constraints
+ * for DTW including Sakoe-Chiba band and Itakura parallelogram.
+ */
+
 #ifndef DTW_ACCELERATOR_CONSTRAINTS_HPP
 #define DTW_ACCELERATOR_CONSTRAINTS_HPP
 
@@ -6,26 +16,50 @@
 namespace dtw_accelerator {
     namespace constraints {
 
-// Define constraint types
+        /**
+         * @brief Enumeration of supported constraint types
+         */
         enum class ConstraintType {
-            NONE,           // No constraint
-            SAKOE_CHIBA,    // Sakoe-Chiba band constraint
-            ITAKURA         // Itakura parallelogram constraint
+            NONE,           ///< No constraint (full matrix)
+            SAKOE_CHIBA,    ///< Sakoe-Chiba band constraint
+            ITAKURA         ///< Itakura parallelogram constraint
         };
 
-// Check if a cell is within the Sakoe-Chiba band constraint
+        /**
+         * @brief Check if a cell is within the Sakoe-Chiba band constraint
+         * @tparam R Radius of the band (template parameter for compile-time optimization)
+         * @param i Row index (0-based)
+         * @param j Column index (0-based)
+         * @param n Number of rows
+         * @param m Number of columns
+         * @return True if cell (i,j) is within the band
+         *
+         * The Sakoe-Chiba band constrains the warping path to stay within
+         * a fixed distance R from the diagonal when normalized.
+         */
         template<int R>
         constexpr bool within_sakoe_chiba_band(int i, int j, int n, int m) {
             // Normalize indices to account for different lengths
             double ni = static_cast<double>(i) / n;
             double nj = static_cast<double>(j) / m;
 
-            // This computes a band of width R around the diagonal
+            // Check if within band of width R around the diagonal
             return std::abs(ni - nj) * std::max(n, m) <= R;
         }
 
 
-// Check if a cell is within the Itakura parallelogram constraint
+        /**
+        * @brief Check if a cell is within the Itakura parallelogram constraint
+        * @tparam S Maximum slope constraint (must be > 1.0)
+        * @param i Row index (0-based)
+        * @param j Column index (0-based)
+        * @param n Number of rows
+        * @param m Number of columns
+        * @return True if cell (i,j) is within the parallelogram
+        *
+        * The Itakura parallelogram constrains the warping path slope
+        * to be between 1/S and S, preventing excessive stretching or compression.
+        */
         template<double S>
         constexpr bool within_itakura_parallelogram(int i, int j, int n, int m) {
             static_assert(S > 1.0, "Itakura slope constraint must be greater than 1");
@@ -44,10 +78,6 @@ namespace dtw_accelerator {
 
             // Itakura parallelogram constraints:
             // The path must satisfy both forward and backward slope constraints
-            // Forward: from (0,0) to current point
-            // Backward: from current point to (1,1)
-
-            // Check if point is within the parallelogram defined by:
             // max(1/S * ni, S * ni - (S - 1)) ≤ nj ≤ min(S * ni, 1/S * ni + (1 - 1/S))
 
             double lower_bound = std::max(ni / S, S * ni - (S - 1.0));

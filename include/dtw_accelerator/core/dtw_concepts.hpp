@@ -1,3 +1,14 @@
+/**
+ * @file dtw_concepts.hpp
+ * @brief C++20 concepts for DTW execution strategies
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file defines C++20 concepts that establish the interface
+ * requirements for DTW execution strategies, enabling compile-time
+ * polymorphism and type safety.
+ */
+
 #ifndef DTW_ACCELERATOR_DTW_CONCEPTS_HPP
 #define DTW_ACCELERATOR_DTW_CONCEPTS_HPP
 
@@ -13,11 +24,16 @@
 namespace dtw_accelerator {
     namespace concepts {
 
-        // Forward declaration for WindowConstraint
+        /// @brief Type alias for window constraint representation
         using WindowConstraint = std::vector<std::pair<int, int>>;
 
-
-        // Concept for types that can be used as DTW matrices
+        /**
+         * @brief Concept for types that can be used as DTW matrices
+         * @tparam T The type to check
+         *
+         * A type satisfies DTWMatrix if it provides matrix-like operations
+         * including resize, element access, and dimension queries.
+         */
         template<typename T>
         concept DTWMatrix = requires(T matrix, size_t i, size_t j, double value) {
             { matrix.resize(i, j, value) } -> std::same_as<void>;
@@ -27,73 +43,113 @@ namespace dtw_accelerator {
             { matrix.cols() } -> std::convertible_to<size_t>;
             };
 
-// Base concept for all execution strategies
-template<typename Strategy>
-concept ExecutionStrategy = requires(
-        Strategy strategy,
-DoubleMatrix& D,
-const DoubleTimeSeries& A,
-const DoubleTimeSeries& B,
-int n, int m, int dim,
-const WindowConstraint* window)
-{
-// Required: Initialize the DTW matrix
-{ strategy.initialize_matrix(D, n, m) } -> std::same_as<void>;
+        /**
+         * @brief Core concept for all DTW execution strategies
+         * @tparam Strategy The strategy type to check
+         *
+         * This concept defines the required interface that all execution
+         * strategies must implement. It ensures type safety and enables
+         * compile-time polymorphism for different execution backends.
+         */
+        template<typename Strategy>
+        concept ExecutionStrategy = requires(
+                Strategy strategy,
+        DoubleMatrix& D,
+        const DoubleTimeSeries& A,
+        const DoubleTimeSeries& B,
+        int n, int m, int dim,
+        const WindowConstraint* window)
+        {
 
-// Required: Execute DTW computation
-{ strategy.template execute_with_constraint<
-        constraints::ConstraintType::NONE, 1, 2.0,
-        distance::MetricType::EUCLIDEAN>(
-        D, A, B, n, m, dim, window) } -> std::same_as<void>;
+        /**
+         * @brief Initialize the DTW cost matrix
+         */
+        { strategy.initialize_matrix(D, n, m) } -> std::same_as<void>;
 
-// Required: Extract result and path
-{ strategy.extract_result(D) } ->
-std::convertible_to<std::pair<double, std::vector<std::pair<int, int>>>>;
-
-// Required: Strategy identification
-{ strategy.name() } -> std::convertible_to<std::string_view>;
-{ strategy.is_parallel() } -> std::convertible_to<bool>;
-};
-
-
-// Concept for parallel strategies with configurable resources
-template<typename Strategy>
-concept ConfigurableParallelStrategy = ExecutionStrategy<Strategy> &&
-                                       requires(Strategy strategy, int value)
-{
-{ strategy.set_num_threads(value) } -> std::same_as<void>;
-{ strategy.get_num_threads() } -> std::convertible_to<int>;
-};
-
-// Concept for block-based strategies
-template<typename Strategy>
-concept BlockBasedStrategy = ExecutionStrategy<Strategy> &&
-                             requires(Strategy strategy, int block_size)
-{
-{ strategy.set_block_size(block_size) } -> std::same_as<void>;
-{ strategy.get_block_size() } -> std::convertible_to<int>;
-};
-
-// Type trait to check if a strategy supports a specific distance metric
-template<typename Strategy, distance::MetricType M>
-struct supports_metric : std::false_type {};
-
-template<typename Strategy, distance::MetricType M>
-requires requires(Strategy s, DoubleMatrix& D,
-                  const DoubleTimeSeries& A,
-                  const DoubleTimeSeries& B,
-                  int n, int m, int dim,
-                  const WindowConstraint* window) {
-    { s.template execute_with_constraint<
-                constraints::ConstraintType::NONE, 1, 2.0, M>(
+        /**
+         * @brief Execute DTW computation with constraints
+         */
+        { strategy.template execute_with_constraint<
+                constraints::ConstraintType::NONE, 1, 2.0,
+                distance::MetricType::EUCLIDEAN>(
                 D, A, B, n, m, dim, window) } -> std::same_as<void>;
-}
-struct supports_metric<Strategy, M> : std::true_type {};
 
-template<typename Strategy, distance::MetricType M>
-inline constexpr bool supports_metric_v = supports_metric<Strategy, M>::value;
+        /**
+         * @brief Extract final result and optimal path
+         */
+        { strategy.extract_result(D) } ->
+        std::convertible_to<std::pair<double, std::vector<std::pair<int, int>>>>;
 
-} // namespace concepts
+        /**
+         * @brief Get strategy name for identification
+         */
+        { strategy.name() } -> std::convertible_to<std::string_view>;
+
+        /**
+         * @brief Check if strategy uses parallel execution
+         */
+        { strategy.is_parallel() } -> std::convertible_to<bool>;
+        };
+
+
+        /**
+         * @brief Concept for parallel strategies with configurable resources
+         * @tparam Strategy The strategy type to check
+         *
+         * Extends ExecutionStrategy with thread management capabilities.
+         */
+        template<typename Strategy>
+        concept ConfigurableParallelStrategy = ExecutionStrategy<Strategy> &&
+                                               requires(Strategy strategy, int value)
+        {
+        { strategy.set_num_threads(value) } -> std::same_as<void>;
+        { strategy.get_num_threads() } -> std::convertible_to<int>;
+        };
+
+        /**
+         * @brief Concept for block-based execution strategies
+         * @tparam Strategy The strategy type to check
+         *
+         * Extends ExecutionStrategy with block size configuration.
+         */
+        template<typename Strategy>
+        concept BlockBasedStrategy = ExecutionStrategy<Strategy> &&
+                                     requires(Strategy strategy, int block_size)
+        {
+        { strategy.set_block_size(block_size) } -> std::same_as<void>;
+        { strategy.get_block_size() } -> std::convertible_to<int>;
+        };
+
+        /**
+         * @brief Type trait to check if a strategy supports a specific distance metric
+         * @tparam Strategy The strategy type
+         * @tparam M The metric type
+         */
+        template<typename Strategy, distance::MetricType M>
+        struct supports_metric : std::false_type {};
+
+        /**
+         * @brief Specialization for strategies that support the metric
+         */
+        template<typename Strategy, distance::MetricType M>
+        requires requires(Strategy s, DoubleMatrix& D,
+                          const DoubleTimeSeries& A,
+                          const DoubleTimeSeries& B,
+                          int n, int m, int dim,
+                          const WindowConstraint* window) {
+            { s.template execute_with_constraint<
+                        constraints::ConstraintType::NONE, 1, 2.0, M>(
+                        D, A, B, n, m, dim, window) } -> std::same_as<void>;
+        }
+        struct supports_metric<Strategy, M> : std::true_type {};
+
+        /**
+         * @brief Helper variable template for supports_metric
+         */
+        template<typename Strategy, distance::MetricType M>
+        inline constexpr bool supports_metric_v = supports_metric<Strategy, M>::value;
+
+    } // namespace concepts
 } // namespace dtw_accelerator
 
 #endif // DTW_ACCELERATOR_DTW_CONCEPTS_HPP
