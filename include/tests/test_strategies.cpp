@@ -1,3 +1,14 @@
+/**
+ * @file test_strategies.cpp
+ * @brief Unit tests for DTW execution strategies
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file contains comprehensive tests for all execution strategies
+ * (Sequential, Blocked, OpenMP, MPI, CUDA, Auto) ensuring they produce
+ * consistent results and validating their specific features.
+ */
+
 #include "dtw_accelerator/dtw_accelerator.hpp"
 #include "gtest/gtest.h"
 #include <random>
@@ -6,9 +17,22 @@ using namespace dtw_accelerator;
 using namespace dtw_accelerator::strategies;
 using namespace dtw_accelerator::execution;
 
-// Test fixture for strategy tests
-class StrategyTest : public ::testing::Test {
+/**
+ * @class StrategyTest
+ * @brief Test fixture for execution strategy validation
+ *
+ * Provides test data and utilities for validating that all execution
+ * strategies produce consistent results and perform correctly under
+ * various conditions.
+ */class StrategyTest : public ::testing::Test {
 protected:
+    /**
+       * @brief Set up test environment before each test
+       *
+       * Generates small and medium-sized test series for strategy testing.
+       * Small series are used for quick validation, medium series for
+       * performance comparison and parallel efficiency testing.
+       */
     void SetUp() override {
         // Generate test data
         small_a_ = generate_test_series(50, 2, 42);
@@ -18,6 +42,16 @@ protected:
         medium_b_ = generate_test_series(180, 3, 45);
     }
 
+    /**
+    * @brief Generate random time series for testing
+    * @param length Number of time points
+    * @param dim Number of dimensions
+    * @param seed Random seed for reproducibility
+    * @return Time series with random values in [-10.0, 10.0]
+    *
+    * Uses larger value range than core tests to ensure strategies
+    * handle various numerical scales correctly.
+    */
     DoubleTimeSeries generate_test_series(size_t length, size_t dim, unsigned seed) {
         std::mt19937 gen(seed);
         std::uniform_real_distribution<> dis(-10.0, 10.0);
@@ -31,19 +65,42 @@ protected:
         return series;
     }
 
+    /**
+    * @brief Compare DTW results for equality
+    * @param r1 First result
+    * @param r2 Second result
+    * @param tolerance Numerical tolerance
+    * @return True if distances are equal within tolerance
+    *
+    * Critical for validating that different strategies produce
+    * numerically consistent results.
+    */
     bool results_equal(const std::pair<double, std::vector<std::pair<int, int>>>& r1,
     const std::pair<double, std::vector<std::pair<int, int>>>& r2,
     double tolerance = 1e-6) {
         return std::abs(r1.first - r2.first) < tolerance;
     }
 
+    /// @brief Small test series A (50 points, 2 dimensions)
     DoubleTimeSeries small_a_;
+
+    /// @brief Small test series B (50 points, 2 dimensions)
     DoubleTimeSeries small_b_;
+
+    /// @brief Medium test series A (200 points, 3 dimensions)
     DoubleTimeSeries medium_a_;
+
+    /// @brief Medium test series B (180 points, 3 dimensions)
     DoubleTimeSeries medium_b_;
 };
 
-// Test Sequential Strategy
+/**
+ * @test SequentialStrategy
+ * @brief Test sequential execution strategy
+ *
+ * Validates the baseline sequential strategy, ensuring it produces
+ * correct results and properly reports its characteristics.
+ */
 TEST_F(StrategyTest, SequentialStrategy) {
 SequentialStrategy strategy;
 
@@ -57,7 +114,14 @@ EXPECT_GT(result.first, 0.0);
 EXPECT_FALSE(result.second.empty());
 }
 
-// Test Blocked Strategy
+/**
+ * @test BlockedStrategy
+ * @brief Test cache-optimized blocked execution strategy
+ *
+ * Validates blocked strategy with configurable block sizes.
+ * Verifies results match sequential strategy and tests block
+ * size configuration.
+ */
 TEST_F(StrategyTest, BlockedStrategy) {
 BlockedStrategy strategy(32);
 
@@ -83,7 +147,14 @@ EXPECT_TRUE(results_equal(result, seq_result));
 }
 
 #ifdef USE_OPENMP
-// Test OpenMP Strategy
+/**
+ * @test OpenMPStrategy
+ * @brief Test OpenMP parallel execution strategy
+ *
+ * Validates multi-threaded execution using OpenMP.
+ * Tests thread configuration and verifies parallel results
+ * match sequential computation.
+ */
 TEST_F(StrategyTest, OpenMPStrategy) {
     OpenMPStrategy strategy(2, 32);
 
@@ -111,7 +182,12 @@ TEST_F(StrategyTest, OpenMPStrategy) {
     EXPECT_TRUE(results_equal(result, seq_result));
 }
 
-// Test OpenMP convenience function
+/**
+ * @test OpenMPConvenienceFunction
+ * @brief Test OpenMP convenience function interface
+ *
+ * Validates the simplified OpenMP interface function.
+ */
 TEST_F(StrategyTest, OpenMPConvenienceFunction) {
     auto result = dtw_openmp<MetricType::EUCLIDEAN>(medium_a_, medium_b_, 2, 32);
     EXPECT_GT(result.first, 0.0);
@@ -119,7 +195,14 @@ TEST_F(StrategyTest, OpenMPConvenienceFunction) {
 }
 #endif
 
-// Test Auto Strategy
+/**
+ * @test AutoStrategy
+ * @brief Test automatic strategy selection
+ *
+ * Validates that AutoStrategy correctly selects appropriate
+ * execution strategies based on problem size and available
+ * backends.
+ */
 TEST_F(StrategyTest, AutoStrategy) {
 AutoStrategy strategy(medium_a_.size(), medium_b_.size());
 
@@ -133,7 +216,14 @@ EXPECT_FALSE(result.second.empty());
 EXPECT_FALSE(strategy.name().empty());
 }
 
-// Test new convenience functions
+/**
+ * @test NewConvenienceFunctions
+ * @brief Test strategy convenience functions
+ *
+ * Comprehensive test of all convenience functions for different
+ * strategies, ensuring they work correctly and produce consistent
+ * results.
+ */
 TEST_F(StrategyTest, NewConvenienceFunctions) {
 // Test unconstrained convenience function
 auto unconstrained_result = dtw_unconstrained<MetricType::EUCLIDEAN>(
@@ -168,7 +258,14 @@ EXPECT_GT(auto_result.first, 0.0);
 EXPECT_FALSE(auto_result.second.empty());
 }
 
-// Test strategy consistency across different metrics
+/**
+ * @test StrategyConsistencyAcrossMetrics
+ * @brief Verify strategy consistency with different metrics
+ *
+ * Critical test ensuring all strategies produce identical results
+ * regardless of the distance metric used. Tests Euclidean, Manhattan,
+ * and Chebyshev metrics.
+ */
 TEST_F(StrategyTest, StrategyConsistencyAcrossMetrics) {
 SequentialStrategy seq_strategy;
 BlockedStrategy blocked_strategy(32);
@@ -195,7 +292,13 @@ auto blocked_chebyshev = dtw<MetricType::CHEBYSHEV, constraints::ConstraintType:
 EXPECT_TRUE(results_equal(seq_chebyshev, blocked_chebyshev));
 }
 
-// Test strategies with constraints
+/**
+ * @test StrategiesWithConstraints
+ * @brief Test strategies with path constraints
+ *
+ * Validates that all strategies correctly handle path constraints
+ * (Sakoe-Chiba, Itakura) and produce consistent results.
+ */
 TEST_F(StrategyTest, StrategiesWithConstraints) {
 SequentialStrategy seq_strategy;
 BlockedStrategy blocked_strategy(32);
@@ -227,7 +330,13 @@ EXPECT_GT(blocked_it.first, 0.0);
 EXPECT_TRUE(results_equal(seq_it, blocked_it));
 }
 
-// Test strategies with window constraints
+/**
+ * @test StrategiesWithWindow
+ * @brief Test strategies with window constraints
+ *
+ * Validates that all strategies correctly handle custom window
+ * constraints and produce consistent results for windowed DTW.
+ */
 TEST_F(StrategyTest, StrategiesWithWindow) {
 SequentialStrategy seq_strategy;
 BlockedStrategy blocked_strategy(16);
@@ -253,7 +362,13 @@ EXPECT_GT(blocked_window.first, 0.0);
 EXPECT_TRUE(results_equal(seq_window, blocked_window));
 }
 
-// Test the unified execute_with_constraint directly
+/**
+ * @test DirectExecuteWithConstraint
+ * @brief Test direct execute_with_constraint interface
+ *
+ * Low-level test of the execute_with_constraint method,
+ * validating both overloaded versions (with and without window).
+ */
 TEST_F(StrategyTest, DirectExecuteWithConstraint) {
 SequentialStrategy strategy;
 DoubleMatrix D;
@@ -281,7 +396,14 @@ auto result2 = strategy.extract_result(D);
 EXPECT_TRUE(std::isfinite(result2.first));
 }
 
-// Test FastDTW with new interface
+/**
+ * @test FastDTWWithStrategies
+ * @brief Test FastDTW with different execution strategies
+ *
+ * Validates that FastDTW produces consistent approximate results
+ * across different execution strategies, with appropriate tolerance
+ * for approximation error.
+ */
 TEST_F(StrategyTest, FastDTWWithStrategies) {
 SequentialStrategy seq_strategy;
 BlockedStrategy blocked_strategy(32);
@@ -299,6 +421,15 @@ EXPECT_GT(blocked_fast.first, 0.0);
 EXPECT_TRUE(results_equal(seq_fast, blocked_fast, 1e-4));
 }
 
+/**
+ * @brief Main test runner
+ * @param argc Number of command-line arguments
+ * @param argv Command-line arguments
+ * @return Test execution status
+ *
+ * Initializes Google Test framework and runs all registered tests.
+ * Returns 0 on success, non-zero on test failures.
+ */
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

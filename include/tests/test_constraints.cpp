@@ -1,3 +1,15 @@
+/**
+ * @file test_constraints.cpp
+ * @brief Unit tests for DTW constraint implementations
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file contains comprehensive unit tests for DTW path constraints
+ * including Sakoe-Chiba band, Itakura parallelogram, and window-based
+ * constraints. Tests verify both constraint functions and their integration
+ * with DTW algorithms.
+ */
+
 #include "dtw_accelerator/dtw_accelerator.hpp"
 #include "gtest/gtest.h"
 #include <random>
@@ -6,15 +18,38 @@ using namespace dtw_accelerator;
 using namespace dtw_accelerator::constraints;
 using namespace dtw_accelerator::execution;
 
-// Test fixture for constraint tests
+/**
+ * @class ConstraintTest
+ * @brief Test fixture for DTW constraint functionality
+ *
+ * This test fixture provides common setup and utility functions for testing
+ * various DTW path constraints. It generates random test time series and
+ * provides methods for validating constraint behavior.
+ */
 class ConstraintTest : public ::testing::Test {
 protected:
+    /**
+     * @brief Set up test environment before each test
+     *
+     * Creates two random time series with fixed seeds for reproducible testing.
+     * Series have 20 time points and 2 dimensions each.
+     */
     void SetUp() override {
         // Create test series
         series_a_ = generate_test_series(20, 2, 42);
         series_b_ = generate_test_series(20, 2, 43);
     }
 
+    /**
+     * @brief Generate a random time series for testing
+     * @param length Number of time points in the series
+     * @param dim Number of dimensions per time point
+     * @param seed Random seed for reproducibility
+     * @return Generated time series with random values in [-5.0, 5.0]
+     *
+     * Uses Mersenne Twister for high-quality random number generation
+     * with uniform distribution across the specified range.
+     */
     DoubleTimeSeries generate_test_series(size_t length, size_t dim, unsigned seed) {
         std::mt19937 gen(seed);
         std::uniform_real_distribution<> dis(-5.0, 5.0);
@@ -27,12 +62,24 @@ protected:
         }
         return series;
     }
-
+    /// @brief First test time series
     DoubleTimeSeries series_a_;
+
+    /// @brief Second test time series
     DoubleTimeSeries series_b_;
 };
 
-// Test Sakoe-Chiba band constraint
+/**
+ * @test SakoeChibaBand
+ * @brief Test Sakoe-Chiba band constraint function
+ *
+ * Verifies that the Sakoe-Chiba band constraint correctly identifies
+ * cells within and outside the specified band radius from the diagonal.
+ * Tests include:
+ * - Points on the diagonal (should always be within band)
+ * - Points near the diagonal (within radius)
+ * - Points far from diagonal (outside radius)
+ */
 TEST_F(ConstraintTest, SakoeChibaBand) {
 // Test with different radius values
 const int radius = 2;
@@ -54,7 +101,14 @@ EXPECT_FALSE(within_sakoe_chiba_band<5>(0, 9, n, m));
 EXPECT_FALSE(within_sakoe_chiba_band<5>(9, 0, n, m));
 }
 
-// Test Itakura parallelogram constraint
+/**
+ * @test ItakuraParallelogram
+ * @brief Test Itakura parallelogram constraint function
+ *
+ * Verifies that the Itakura parallelogram constraint correctly identifies
+ * cells within the parallelogram defined by the slope parameter.
+ * The constraint prevents excessive stretching or compression of the path.
+ */
 TEST_F(ConstraintTest, ItakuraParallelogram) {
 constexpr double slope = 2.0;
 
@@ -76,8 +130,14 @@ EXPECT_TRUE(result1 == true || result1 == false);
 EXPECT_TRUE(result2 == true || result2 == false);
 }
 
-// Test windowed DTW
-TEST_F(ConstraintTest, WindowedDTW) {
+/**
+ * @test WindowedDTW
+ * @brief Test DTW with custom window constraints
+ *
+ * Verifies that windowed DTW correctly restricts computation to specified
+ * cells and produces valid results. Compares windowed results with
+ * unconstrained DTW to ensure consistency.
+ */TEST_F(ConstraintTest, WindowedDTW) {
 // Create a diagonal window
 WindowConstraint window;
 int n = series_a_.size();
@@ -109,7 +169,14 @@ EXPECT_FALSE(windowed_result.second.empty());
 EXPECT_FALSE(unconstrained_result.second.empty());
 }
 
-// Test DTW with Sakoe-Chiba constraint
+/**
+ * @test DTWWithSakoeChibaTemplate
+ * @brief Test DTW with compile-time Sakoe-Chiba constraints
+ *
+ * Tests the template-based Sakoe-Chiba constraint implementation with
+ * different radius values. Verifies that smaller radii produce higher
+ * costs due to increased path restrictions.
+ */
 TEST_F(ConstraintTest, DTWWithSakoeChibaTemplate) {
 SequentialStrategy strategy;
 
@@ -136,7 +203,14 @@ EXPECT_GE(result_r1.first, result_r3.first);
 EXPECT_GE(result_r3.first, result_r5.first);
 }
 
-// Test DTW with Itakura constraint
+/**
+ * @test DTWWithItakuraTemplate
+ * @brief Test DTW with compile-time Itakura constraints
+ *
+ * Tests the template-based Itakura constraint implementation with
+ * different slope parameters. Verifies that results are valid and
+ * consistent across different slope values.
+ */
 TEST_F(ConstraintTest, DTWWithItakuraTemplate) {
 SequentialStrategy strategy;
 
@@ -159,7 +233,14 @@ EXPECT_GE(result_s20.first, 0.0);
 EXPECT_GE(result_s30.first, 0.0);
 }
 
-// Test that windowed DTW is consistent across strategies
+/**
+ * @test WindowedConsistencyAcrossStrategies
+ * @brief Verify windowed DTW consistency across execution strategies
+ *
+ * Ensures that windowed DTW produces identical results regardless of
+ * the execution strategy used (Sequential vs Blocked). This test is
+ * critical for validating the correctness of parallel implementations.
+ */
 TEST_F(ConstraintTest, WindowedConsistencyAcrossStrategies) {
 // Create a simple window
 WindowConstraint window;
@@ -192,7 +273,14 @@ auto blocked_result = dtw_windowed<MetricType::EUCLIDEAN>(
 EXPECT_NEAR(seq_result.first, blocked_result.first, 1e-6);
 }
 
-// Test empty window constraint
+/**
+ * @test EmptyWindowConstraint
+ * @brief Test behavior with empty window constraint
+ *
+ * Verifies that DTW handles empty window constraints gracefully,
+ * either returning infinity (no valid path) or handling the edge case
+ * appropriately without crashing.
+ */
 TEST_F(ConstraintTest, EmptyWindowConstraint) {
 WindowConstraint empty_window;
 SequentialStrategy strategy;
@@ -206,7 +294,14 @@ auto result = dtw_windowed<MetricType::EUCLIDEAN>(
 EXPECT_TRUE(std::isfinite(result.first) || std::isinf(result.first));
 }
 
-// Test single point window
+/**
+ * @test SinglePointWindow
+ * @brief Test DTW with single-point window constraint
+ *
+ * Tests the edge case of a window containing only a single cell.
+ * Verifies that the algorithm correctly computes the distance for
+ * this minimal case.
+ */
 TEST_F(ConstraintTest, SinglePointWindow) {
 WindowConstraint single_window = {{0, 0}};
 
@@ -230,7 +325,16 @@ EXPECT_GT(result.first, 0.0);
 EXPECT_EQ(result.second.size(), 1);
 }
 
-// Test the new unified execute_with_constraint interface directly
+/**
+ * @test UnifiedExecuteInterface
+ * @brief Test the unified execute_with_constraint interface
+ *
+ * Validates that the unified interface works correctly with:
+ * - No window constraint (default behavior)
+ * - Global constraints (Sakoe-Chiba, Itakura)
+ * - Custom window constraints
+ * Tests both overloaded versions of the interface.
+ */
 TEST_F(ConstraintTest, UnifiedExecuteInterface) {
 SequentialStrategy strategy;
 DoubleMatrix D;
@@ -268,7 +372,14 @@ auto result3 = strategy.extract_result(D);
 EXPECT_TRUE(std::isfinite(result3.first) || std::isinf(result3.first));
 }
 
-// Test that the overloading works correctly
+/**
+ * @test FunctionOverloadingTest
+ * @brief Test function overloading for constraint interfaces
+ *
+ * Ensures that all overloaded versions of DTW functions compile and
+ * work correctly, including versions with and without explicit window
+ * pointers.
+ */
 TEST_F(ConstraintTest, FunctionOverloadingTest) {
 BlockedStrategy strategy(32);
 
@@ -298,6 +409,12 @@ auto result3 = dtw<MetricType::EUCLIDEAN, ConstraintType::NONE>(
 EXPECT_GT(result3.first, 0.0);
 }
 
+/**
+ * @brief Main test runner
+ * @param argc Number of command-line arguments
+ * @param argv Command-line arguments
+ * @return Test execution status (0 for success)
+ */
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
