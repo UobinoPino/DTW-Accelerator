@@ -10,7 +10,9 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fsanitize=address")
 
 # Define library
-add_library(dtw_accelerator INTERFACE)
+add_library(dtw_accelerator INTERFACE
+        include/tests/performance/benchmark_comprehensive.cpp
+)
 target_include_directories(dtw_accelerator INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 # Define preprocessor flags based on available libraries
@@ -128,40 +130,6 @@ if(USE_CUDA)
         set(USE_CUDA OFF)
     endif()
 endif()
-
-# Examples
-#if(BUILD_EXAMPLES)
-#    add_executable(dtw_example include/examples/example_usage.cpp)
-#    target_link_libraries(dtw_example PRIVATE dtw_accelerator)
-#    if(USE_MPI)
-#        add_executable(dtw_example_mpi include/examples/example_usage_mpi.cpp)
-#        target_link_libraries(dtw_example_mpi PRIVATE dtw_accelerator)
-#        target_compile_definitions(dtw_example_mpi PRIVATE USE_MPI)
-#
-#        add_executable(dtw_test_mpi include/examples/dtw_mpi_test.cpp)
-#        target_link_libraries(dtw_test_mpi PRIVATE dtw_accelerator)
-#        target_compile_definitions(dtw_test_mpi PRIVATE USE_MPI)
-#
-#    endif ()
-#
-#    add_executable(dtw_benchmark include/examples/benchmark.cpp)
-#    target_link_libraries(dtw_benchmark PRIVATE dtw_accelerator)
-#
-#    add_executable(dtw_custom_strategy include/examples/custom_strategy.cpp)
-#    target_link_libraries(dtw_custom_strategy PRIVATE dtw_accelerator)
-#
-#    add_executable(tests include/tests/test_concepts.cpp)
-#    # target_link_libraries(tests PRIVATE dtw_accelerator)
-#    target_link_libraries(tests PRIVATE dtw_accelerator GTest::GTest GTest::Main)
-#
-#
-#    # Add CUDA examples if CUDA is enabled
-#    if(USE_CUDA)
-#        add_executable(dtw_cuda_example include/examples/cuda_example.cpp)
-#        target_link_libraries(dtw_cuda_example PRIVATE dtw_accelerator)
-#        target_compile_definitions(dtw_cuda_example PRIVATE USE_CUDA)
-#    endif()
-#endif()
 
 # Build unit tests if enabled
 if(BUILD_TESTS)
