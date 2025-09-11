@@ -34,7 +34,7 @@ if [ ! -d "build" ]; then
     cd build
     cmake .. -DCMAKE_BUILD_TYPE=Release \
              -DUSE_OPENMP=ON \
-             -DUSE_MPI=ON \
+             -DUSE_MPI=OFF \
              -DUSE_CUDA=ON \
              -DBUILD_BENCHMARKS=ON
 else
@@ -75,6 +75,6 @@ fi
 
 # Generate plots
 echo -e "${GREEN}Generating plots...${NC}"
-python3 ../../../include/tests/performance/plot_results.py
+python3 /mnt/c/Users/Francoo/CLionProjects/DTW-ACCELERATOR/include/tests/performance/plot_results.py
 
 echo -e "${GREEN}Benchmark complete! Check 'benchmark_plots' directory for results.${NC}"

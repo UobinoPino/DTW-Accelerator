@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <string_view>
 #include <memory>
+#include <map>
 #include "dtw_accelerator/execution/base_strategy.hpp"
 
 #ifdef USE_OPENMP
