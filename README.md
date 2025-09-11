@@ -119,14 +119,83 @@ dtw-accelerator/
 ### Requirements
 
 - C++20 compatible compiler (GCC 10+, Clang 12+, MSVC 2019+)
-- CMake 3.20+
-- Optional: OpenMP, MPI, CUDA Toolkit 12.0+
-
-### Building from Source
+- CMake 3.20 or higher
 
 ```bash
+# Ubuntu/Debian
+  sudo apt-get install cmake
+```
+- Optional Dependencies:
+  Google Test (for unit tests)
+```bash
+# Ubuntu/Debian
+sudo apt-get install libgtest-dev
+
+# From source
+git clone https://github.com/google/googletest.git
+cd googletest
+mkdir build && cd build
+cmake ..
+make
+sudo make install
+```
+OpenMP (for multi-threaded CPU execution)
+```bash
+# Ubuntu/Debian
+sudo apt-get install libomp-dev
+```
+MPI (for distributed computing)
+```bash
+# Ubuntu/Debian (OpenMPI)
+sudo apt-get install libopenmpi-dev openmpi-bin
+```
+CUDA Toolkit 12+ (for GPU acceleration)
+```bash
+# Download from NVIDIA: https://developer.nvidia.com/cuda-downloads
+
+# Ubuntu example (CUDA 12.3)
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt-get update
+sudo apt-get install cuda-toolkit-12-3
+
+# Verify installation
+nvcc --version
+nvidia-smi
+```
+Python Dependencies (for benchmark visualization)
+```bash
+pip install pandas matplotlib numpy
+```
+
+## ⚙️ Building the Project
+
+### Quick Build with Scripts
+
+The project includes convenient build scripts for streamlined compilation:
+
+```bash
+# Clone the repository
 git clone https://github.com/UobinoPino/DTW-Accelerator.git
 cd dtw-accelerator
+
+# Make scripts executable
+chmod +x build.sh run_benchmarks.sh run_unit_tests.sh
+
+# Build the entire project
+./build.sh
+
+# Run unit tests
+./run_unit_tests.sh
+
+# Run comprehensive benchmarks and generate plots
+./run_benchmarks.sh
+```
+
+### Manual Build with CMake
+For more control over the build process:
+```bash
+# Create build directory
 mkdir build && cd build
 
 # Configure with desired backends
@@ -141,30 +210,109 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 make -j$(nproc)
 
 # Run tests
-TODO
+ctest --output-on-failure
 
-# Install
+# Install (optional)
 sudo make install
 ```
 
 ## 🎯 Usage Examples
+### Layered Interface Approach
+DTW Accelerator provides multiple interface layers, allowing users to choose the appropriate level of control for their needs:
+### 1. Simple Interface (Automatic Backend Selection)
+   For common use cases, the library automatically selects the best backend:
+```cpp
+#include "dtw_accelerator/dtw_accelerator.hpp"
 
-TODO
+using namespace dtw_accelerator;
 
-### Custom Strategy Implementation
+int main() {
+    // Create time series
+    DoubleTimeSeries series_a(1000, 3);  // 1000 points, 3 dimensions
+    DoubleTimeSeries series_b(1000, 3);
+    
+    // ... fill with data ...
+    
+    // Automatic backend selection based on problem size
+    auto result = dtw(series_a, series_b);
+    
+    std::cout << "DTW Distance: " << result.first << std::endl;
+    std::cout << "Path length: " << result.second.size() << std::endl;
+    
+    return 0;
+}
+```
+### 2. Backend-Specific Optimization
+   When you need/want control over specific backends:
+```cpp
+#include "dtw_accelerator/dtw_accelerator.hpp"
+
+using namespace dtw_accelerator;
+
+int main() {
+    DoubleTimeSeries series_a(5000, 3);
+    DoubleTimeSeries series_b(5000, 3);
+    // ... fill with data ...
+    
+    // CPU: Sequential for small data
+    auto seq_result = cpu::dtw<MetricType::EUCLIDEAN>(series_a, series_b);
+    
+    // CPU: Cache-optimized blocked execution
+    auto blocked_result = cpu::dtw_blocked<MetricType::EUCLIDEAN>(
+        series_a, series_b, 64);  // 64 = block size
+    
+#ifdef USE_OPENMP
+    // Multi-threaded with OpenMP
+    auto omp_result = openmp::dtw<MetricType::MANHATTAN>(
+        series_a, series_b, 
+        4,    // number of threads
+        128   // block size
+    );
+#endif
+
+#ifdef USE_CUDA
+    // GPU acceleration for large sequences
+    if (cuda::is_available()) {
+        auto gpu_result = cuda::dtw_cuda<MetricType::EUCLIDEAN>(
+            series_a, series_b, 64);  // tile size
+        
+        std::cout << "GPU Device: " << cuda::device_info() << std::endl;
+    }
+#endif
+
+#ifdef USE_MPI
+    // Distributed computation across nodes
+    auto mpi_result = mpi::dtw<MetricType::CHEBYSHEV>(
+        series_a, series_b,
+        64,   // block size
+        4,    // threads per process
+        MPI_COMM_WORLD
+    );
+#endif
+    
+    return 0;
+}
+```
+### 3. Custom Strategy Injection
+   For specialized requirements, you can implement custom execution strategies:
 
 ```cpp
-class MyCustomStrategy : public BaseStrategy<MyCustomStrategy> {
+#include "dtw_accelerator/dtw_accelerator.hpp"
+
+using namespace dtw_accelerator;
+
+// Custom strategy with specialized optimization
+class MyCustomStrategy : public execution::BaseStrategy<MyCustomStrategy> {
 public:
-    template<distance::MetricType M>
-    void execute(DoubleMatrix& D,
-                 const DoubleTimeSeries& A,
-                 const DoubleTimeSeries& B,
-                 int n, int m, int dim) const {
+    template<constraints::ConstraintType CT, int R, double S, 
+             distance::MetricType M>
+    void execute_with_constraint(DoubleMatrix& D,
+                                 const DoubleTimeSeries& A,
+                                 const DoubleTimeSeries& B,
+                                 int n, int m, int dim,
+                                 const WindowConstraint* window) const {
         // Your custom implementation
-        //.....
-        
-        .....//
+        // For example: SIMD vectorization, custom memory layout, etc.
         for (int i = 1; i <= n; ++i) {
             for (int j = 1; j <= m; ++j) {
                 D(i, j) = utils::compute_cell_cost<M>(
@@ -179,22 +327,148 @@ public:
     bool is_parallel() const { return false; }
 };
 
-// Use custom strategy
-MyCustomStrategy custom;
-auto result = dtw<MetricType::EUCLIDEAN>(series_a, series_b, custom);
+int main() {
+    DoubleTimeSeries series_a(1000, 3);
+    DoubleTimeSeries series_b(1000, 3);
+    // ... fill with data ...
+    
+    // Use custom strategy
+    MyCustomStrategy custom;
+    auto result = dtw_custom<MetricType::EUCLIDEAN>(
+        series_a, series_b, custom);
+    
+    std::cout << "Result with custom strategy: " << result.first << std::endl;
+    
+    return 0;
+}
 ```
 
-## 🔧 Advanced Features
+## Automatic Strategy Selection
+The AutoStrategy class implements intelligent backend selection based on problem characteristics:
+```cpp
+class AutoStrategy : public BaseStrategy<AutoStrategy> {
+    void select_strategy() const {
+        #ifdef USE_CUDA
+        if (n_ >= 1000 && m_ >= 1000 && cuda::is_available()) {
+            // Use CUDA for large problems
+            strategy_ = std::make_unique<CUDAStrategy>();
+            return;
+        }
+        #endif
+        
+        #ifdef USE_OPENMP
+        if (n_ >= 100 && m_ >= 100) {
+            // Use OpenMP for medium problems
+            strategy_ = std::make_unique<OpenMPStrategy>();
+            return;
+        }
+        #endif
+        
+        if (n_ >= 50 && m_ >= 50) {
+            // Use blocked strategy for cache optimization
+            strategy_ = std::make_unique<BlockedStrategy>();
+            return;
+        }
+        
+        // Default to sequential for small problems
+        strategy_ = std::make_unique<SequentialStrategy>();
+    }
+};
+```
 
-### MPI Usage
+## 🔧 Advanced Features Examples
 
+### Using Path Constraints
+```cpp
+// Sakoe-Chiba band constraint
+auto result_band = dtw_sakoe_chiba<MetricType::EUCLIDEAN, 10>(
+    series_a, series_b, execution::AutoStrategy{}
+);
+
+// Itakura parallelogram constraint  
+auto result_para = dtw_itakura<MetricType::EUCLIDEAN, 2.0>(
+    series_a, series_b, execution::OpenMPStrategy{4, 64}
+);
+
+// Custom window constraint
+WindowConstraint window;
+for (int i = 0; i < n; ++i) {
+    for (int j = std::max(0, i-5); j <= std::min(m-1, i+5); ++j) {
+        window.push_back({i, j});
+    }
+}
+auto result_window = dtw_windowed<MetricType::EUCLIDEAN>(
+    series_a, series_b, window, execution::BlockedStrategy{32}
+);
+```
+### FastDTW Approximation
+```cpp
+// FastDTW for O(n) complexity
+int radius = 2;        // Search window radius
+int min_size = 100;    // Minimum size for recursion
+
+// Auto-select best backend
+auto fast_result = fastdtw(series_a, series_b, radius, min_size);
+
+// Or specify backend explicitly
+auto fast_omp = fastdtw_openmp<MetricType::EUCLIDEAN>(
+    series_a, series_b, radius, min_size, 4, 64
+);
+```
+### Different Distance Metrics
+```cpp
+// Euclidean distance (default)
+auto euclidean = dtw<MetricType::EUCLIDEAN>(series_a, series_b);
+
+// Manhattan distance
+auto manhattan = dtw<MetricType::MANHATTAN>(series_a, series_b);
+
+// Chebyshev distance
+auto chebyshev = dtw<MetricType::CHEBYSHEV>(series_a, series_b);
+
+// Cosine distance
+auto cosine = dtw<MetricType::COSINE>(series_a, series_b);
+```
+## Testing
+Running Unit Tests
 ```bash
-# Compile with MPI support
-mpicxx -std=c++20 -DUSE_MPI your_program.cpp -o your_program
+# Using the convenience script
+./run_unit_tests.sh
 
-# Run with multiple processes
-mpirun -np 4 ./your_program
+# Or manually
+cd build
+ctest --output-on-failure
+
+# Run specific test
+./include/tests/test_core
+./include/tests/test_strategies
+./include/tests/test_distance_metrics
+./include/tests/test_constraints
 ```
+
+Running Benchmarks
+```bash
+# Complete benchmark suite with visualization
+./run_benchmarks.sh
+
+# Without MPI (if not installed)
+./run_benchmarks.sh --no-mpi
+
+# Manual benchmark execution
+cd build/include/tests/performance
+./benchmark_comprehensive
+
+# Generate plots from results
+python3 plot_results.py
+```
+
+The benchmark suite will:
+
+- Test all available backends, 
+- Compare performance across different problem sizes
+- Generate performance plots in benchmark_plots/ directory
+- Create a detailed report with speedup analysis
+
 
 ## 📊 Performance Characteristics
 
@@ -256,4 +530,4 @@ If you use DTW Accelerator in your research, please cite:
 1. [Dynamic Time Warping](https://en.wikipedia.org/wiki/Dynamic_time_warping)
 2. [FastDTW Algorithm](https://cs.fit.edu/~pkc/papers/tdm04.pdf)
 3. [C++20 Concepts](https://en.cppreference.com/w/cpp/language/constraints)
-4. [Wavefront Parallel Pattern](https://en.wikipedia.org/wiki/Wavefront_pattern)
+
