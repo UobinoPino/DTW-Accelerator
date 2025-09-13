@@ -246,8 +246,6 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 # Build
 make -j$(nproc)
 
-# Run tests
-ctest --output-on-failure
 
 # Install (optional)
 sudo make install
