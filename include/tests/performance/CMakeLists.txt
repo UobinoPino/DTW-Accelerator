@@ -1,118 +1,144 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.26)
 
-# Performance test executables
-add_executable(benchmark_strategies benchmark_strategies.cpp)
-target_link_libraries(benchmark_strategies PRIVATE dtw_accelerator)
+# ==================================================
+# SEPARATED BENCHMARKS FOR FAIR COMPARISON
+# ==================================================
 
-add_executable(benchmark_scaling benchmark_scaling.cpp)
-target_link_libraries(benchmark_scaling PRIVATE dtw_accelerator)
+# Pure Sequential Baseline
+add_executable(benchmark_sequential_pure benchmark_sequential_pure.cpp)
+target_link_libraries(benchmark_sequential_pure PRIVATE dtw_accelerator)
 
-add_executable(openmp_profile openmp_dtw_profile.cpp)
-target_link_libraries(openmp_profile PRIVATE dtw_accelerator)
-
-# Add CUDA-specific benchmarks if CUDA is enabled
-if(USE_CUDA)
-    add_executable(profile_cuda profile_cuda.cpp)
-    target_link_libraries(profile_cuda PRIVATE dtw_accelerator)
-    target_compile_definitions(profile_cuda PRIVATE USE_CUDA)
-
-    add_executable(diagnose_cuda_issue diagnose_cuda_issue.cpp)
-    target_link_libraries(diagnose_cuda_issue PRIVATE dtw_accelerator)
-    target_compile_definitions(diagnose_cuda_issue PRIVATE USE_CUDA)
+# OpenMP-only benchmark
+add_executable(benchmark_openmp_only benchmark_openmp_only.cpp)
+target_link_libraries(benchmark_openmp_only PRIVATE dtw_accelerator)
+if(USE_OPENMP)
+    target_compile_definitions(benchmark_openmp_only PRIVATE USE_OPENMP)
 endif()
 
-# Add test targets
-add_custom_target(run_benchmarks
-COMMAND benchmark_strategies
-COMMAND benchmark_scaling
-DEPENDS benchmark_strategies benchmark_scaling
-COMMENT "Running all performance benchmarks"
-)
+# MPI-only benchmark
+add_executable(benchmark_mpi_only benchmark_mpi_only.cpp)
+target_link_libraries(benchmark_mpi_only PRIVATE dtw_accelerator)
+if(USE_MPI)
+    target_compile_definitions(benchmark_mpi_only PRIVATE USE_MPI)
+endif()
 
-# Individual benchmark targets
-add_custom_target(benchmark_quick
-COMMAND benchmark_strategies
-DEPENDS benchmark_strategies
-COMMENT "Running quick strategy comparison"
-)
-
-add_custom_target(benchmark_full
-COMMAND benchmark_strategies
-COMMAND benchmark_scaling
-DEPENDS benchmark_strategies benchmark_scaling
-COMMENT "Running full performance analysis"
-)
-
+add_executable(benchmark_cuda_only benchmark_cuda_only.cpp)
+target_link_libraries(benchmark_cuda_only PRIVATE dtw_accelerator)
 if(USE_CUDA)
-    add_custom_target(benchmark_cuda
-            COMMAND profile_cuda
-            COMMAND diagnose_cuda_issue
-            DEPENDS benchmark_cuda_profile diagnose_cuda_issue
-            COMMENT "Running CUDA-specific benchmarks and diagnostics"
+    target_compile_definitions(benchmark_cuda_only PRIVATE USE_CUDA)
+endif()
+
+
+
+# ==================================================
+# CUSTOM TARGETS FOR RUNNING BENCHMARKS
+# ==================================================
+
+# Fair benchmark targets
+add_custom_target(run_fair_benchmarks
+        COMMAND ${CMAKE_COMMAND} -E echo "Running fair separated benchmarks..."
+        COMMAND benchmark_sequential_pure
+        COMMAND benchmark_openmp_only
+        COMMAND ${CMAKE_COMMAND} -E echo "For MPI, run: mpirun -np N benchmark_mpi_only"
+        DEPENDS benchmark_sequential_pure benchmark_openmp_only benchmark_mpi_only
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Running fair benchmarks (separated compilation)"
+)
+
+# Generate plots from fair benchmarks
+add_custom_target(plot_fair_results
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/plot_results_updated.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Generating plots from fair benchmark results"
+)
+
+
+# Combined target to run everything
+add_custom_target(run_all_benchmarks
+        COMMAND ${CMAKE_COMMAND} -E echo "Running all benchmarks..."
+        COMMAND benchmark_sequential_pure
+        COMMAND benchmark_openmp_only
+        COMMAND ${CMAKE_COMMAND} -E echo "For MPI: mpirun -np N benchmark_mpi_only"
+        DEPENDS benchmark_sequential_pure benchmark_openmp_only benchmark_mpi_only
+        COMMENT "Running all benchmarks (fair and legacy)"
+)
+
+# MPI-specific targets
+if(USE_MPI)
+    add_custom_target(run_mpi_fair_2
+            COMMAND mpirun -np 2 benchmark_mpi_only
+            DEPENDS benchmark_mpi_only
+            COMMENT "Running fair MPI benchmark with 2 processes"
+    )
+
+    add_custom_target(run_mpi_fair_4
+            COMMAND mpirun -np 4 benchmark_mpi_only
+            DEPENDS benchmark_mpi_only
+            COMMENT "Running fair MPI benchmark with 4 processes"
+    )
+
+    add_custom_target(run_mpi_fair_8
+            COMMAND mpirun -np 8 benchmark_mpi_only
+            DEPENDS benchmark_mpi_only
+            COMMENT "Running fair MPI benchmark with 8 processes"
+    )
+
+    add_custom_target(run_mpi_fair_all
+            COMMAND mpirun -np 1 benchmark_mpi_only
+            COMMAND mpirun -np 2 benchmark_mpi_only
+            COMMAND mpirun -np 4 benchmark_mpi_only
+            COMMAND mpirun -np 8 benchmark_mpi_only
+            DEPENDS benchmark_mpi_only
+            COMMENT "Running fair MPI benchmarks with 1, 2, 4, 8 processes"
     )
 endif()
+
+# CUDA-specific targets
+if(USE_CUDA)
+    add_custom_target(run_cuda_benchmark
+            COMMAND benchmark_cuda_only
+            DEPENDS benchmark_cuda_only
+            COMMENT "Running CUDA benchmark"
+    )
+endif()
+
+# ==================================================
+# INSTALLATION
+# ==================================================
 
 # Install benchmark binaries
-install(TARGETS benchmark_strategies benchmark_scaling openmp_profile
-RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/benchmarks)
-
-# Install CUDA benchmark binaries if CUDA is enabled
-if(USE_CUDA)
-    install(TARGETS profile_cuda diagnose_cuda_issue
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/benchmarks)
-endif()
-
-
-# Comprehensive benchmark executable
-add_executable(benchmark_comprehensive benchmark_comprehensive.cpp)
-target_link_libraries(benchmark_comprehensive PRIVATE dtw_accelerator)
-
-# Set compile definitions based on available backends
-if(USE_OPENMP)
-    target_compile_definitions(benchmark_comprehensive PRIVATE USE_OPENMP)
-endif()
-
-if(USE_MPI)
-    target_compile_definitions(benchmark_comprehensive PRIVATE USE_MPI)
-endif()
-
-if(USE_CUDA)
-    target_compile_definitions(benchmark_comprehensive PRIVATE USE_CUDA)
-endif()
-
-# Custom target to run benchmarks and generate plots
-add_custom_target(run_comprehensive_benchmark
-        COMMAND benchmark_comprehensive
-        COMMAND ${CMAKE_COMMAND} -E echo "Generating plots..."
-        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/plot_results.py
-        DEPENDS benchmark_comprehensive
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running comprehensive DTW benchmarks and generating plots"
-)
-
-# Target for MPI benchmarks (requires mpirun)
-if(USE_MPI)
-    add_custom_target(run_mpi_benchmark
-            COMMAND mpirun -np 4 benchmark_comprehensive
-            COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/plot_results.py
-            DEPENDS benchmark_comprehensive
-            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-            COMMENT "Running MPI DTW benchmarks with 4 processes"
-    )
-endif()
-
-# Install benchmark files
-install(TARGETS benchmark_comprehensive
+install(TARGETS
+        benchmark_sequential_pure
+        benchmark_openmp_only
+        benchmark_mpi_only
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}/benchmarks
 )
 
-install(FILES plot_results.py
+# Install Python plotting scripts
+install(FILES
+        plot_results.py
+        plot_results_updated.py
         DESTINATION ${CMAKE_INSTALL_BINDIR}/benchmarks
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
         GROUP_READ GROUP_EXECUTE
         WORLD_READ WORLD_EXECUTE
 )
 
-# Copy benchmark utilities header
-install(FILES benchmark_utils.hpp
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dtw_accelerator/benchmarks)
+# Install benchmark utilities header (if exists)
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/benchmark_utils.hpp)
+    install(FILES benchmark_utils.hpp
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/dtw_accelerator/benchmarks
+    )
+endif()
+
+# ==================================================
+# MESSAGES
+# ==================================================
+
+message(STATUS "Benchmark targets configured:")
+message(STATUS "  - benchmark_sequential_pure (pure baseline)")
+message(STATUS "  - benchmark_openmp_only (OpenMP only)")
+message(STATUS "  - benchmark_mpi_only (MPI only)")
+message(STATUS "")
+message(STATUS "Use 'make run_fair_benchmarks' for accurate comparisons")
+message(STATUS "Use 'make plot_fair_results' to generate plots")

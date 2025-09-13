@@ -87,6 +87,7 @@ if $RUN_OPENMP; then
     fi
 fi
 
+AVAILABLE_SLOTS=$(nproc)
 # Run MPI scaling benchmarks (requires multiple mpirun calls)
 if $RUN_MPI && command -v mpirun &> /dev/null; then
     echo ""
@@ -97,7 +98,7 @@ if $RUN_MPI && command -v mpirun &> /dev/null; then
 
     # Run for different process counts
     for NPROCS in 1 2 4 8; do
-        echo -e "${BLUE}Running MPI with $NPROCS processes...${NC}"
+        echo -e "${BLUE}Running MPI with $NPROCS processes... (available slots: $AVAILABLE_SLOTS)${NC}"
         mpirun -np $NPROCS ./benchmark_scaling
 
         if [ $? -ne 0 ]; then

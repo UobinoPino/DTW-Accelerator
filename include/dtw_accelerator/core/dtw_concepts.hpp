@@ -28,22 +28,6 @@ namespace dtw_accelerator {
         using WindowConstraint = std::vector<std::pair<int, int>>;
 
         /**
-         * @brief Concept for types that can be used as DTW matrices
-         * @tparam T The type to check
-         *
-         * A type satisfies DTWMatrix if it provides matrix-like operations
-         * including resize, element access, and dimension queries.
-         */
-        template<typename T>
-        concept DTWMatrix = requires(T matrix, size_t i, size_t j, double value) {
-            { matrix.resize(i, j, value) } -> std::same_as<void>;
-            { matrix(i, j) } -> std::convertible_to<double>;
-            { matrix(i, j) = value } -> std::same_as<double&>;
-            { matrix.rows() } -> std::convertible_to<size_t>;
-            { matrix.cols() } -> std::convertible_to<size_t>;
-            };
-
-        /**
          * @brief Core concept for all DTW execution strategies
          * @tparam Strategy The strategy type to check
          *
@@ -91,34 +75,6 @@ namespace dtw_accelerator {
         { strategy.is_parallel() } -> std::convertible_to<bool>;
         };
 
-
-        /**
-         * @brief Concept for parallel strategies with configurable resources
-         * @tparam Strategy The strategy type to check
-         *
-         * Extends ExecutionStrategy with thread management capabilities.
-         */
-        template<typename Strategy>
-        concept ConfigurableParallelStrategy = ExecutionStrategy<Strategy> &&
-                                               requires(Strategy strategy, int value)
-        {
-        { strategy.set_num_threads(value) } -> std::same_as<void>;
-        { strategy.get_num_threads() } -> std::convertible_to<int>;
-        };
-
-        /**
-         * @brief Concept for block-based execution strategies
-         * @tparam Strategy The strategy type to check
-         *
-         * Extends ExecutionStrategy with block size configuration.
-         */
-        template<typename Strategy>
-        concept BlockBasedStrategy = ExecutionStrategy<Strategy> &&
-                                     requires(Strategy strategy, int block_size)
-        {
-        { strategy.set_block_size(block_size) } -> std::same_as<void>;
-        { strategy.get_block_size() } -> std::convertible_to<int>;
-        };
 
         /**
          * @brief Type trait to check if a strategy supports a specific distance metric

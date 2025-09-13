@@ -116,51 +116,6 @@ namespace dtw_accelerator {
             }
 
             /**
-            * @brief Process a block with window constraints
-            * @tparam M Distance metric type
-            * @param D Cost matrix
-            * @param A First time series
-            * @param B Second time series
-            * @param bi Block row index
-            * @param bj Block column index
-            * @param n Total rows
-            * @param m Total columns
-            * @param dim Number of dimensions
-            * @param window Valid cell coordinates
-            * @param block_size Size of processing block
-            *
-            * Only processes cells that fall within both the block and the window
-            */
-            template<distance::MetricType M>
-            void process_block_constrained(DoubleMatrix& D,
-                                      const DoubleTimeSeries& A,
-                                      const DoubleTimeSeries& B,
-                                      int bi, int bj, int n, int m, int dim,
-                                      const std::vector<std::pair<int, int>>& window,
-                                      int block_size) const {
-
-                int i_start = bi * block_size;
-                int i_end = std::min((bi + 1) * block_size, n);
-                int j_start = bj * block_size;
-                int j_end = std::min((bj + 1) * block_size, m);
-
-                // Process only window cells that fall within this block
-                for (const auto& [i, j] : window) {
-                    if (i >= i_start && i < i_end && j >= j_start && j < j_end) {
-                        int i_idx = i + 1;  // Convert to 1-based matrix indexing
-                        int j_idx = j + 1;
-
-                        D(i_idx, j_idx) = utils::compute_cell_cost<M>(
-                                A[i], B[j], dim,
-                                D(i_idx-1, j_idx-1),
-                                D(i_idx, j_idx-1),
-                                D(i_idx-1, j_idx)
-                        );
-                    }
-                }
-            }
-
-            /**
              * @brief Process a block with global path constraints
              * @tparam CT Constraint type (NONE, SAKOE_CHIBA, ITAKURA)
              * @tparam R Sakoe-Chiba band radius

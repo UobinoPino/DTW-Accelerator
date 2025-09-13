@@ -26,7 +26,7 @@ concept ExecutionStrategy = requires(Strategy s, DoubleMatrix& D,
                                     const DoubleTimeSeries& B,
                                     int n, int m, int dim) {
     { s.initialize_matrix(D, n, m) } -> std::same_as<void>;
-    { s.template execute<MetricType::EUCLIDEAN>(D, A, B, n, m, dim) } -> std::same_as<void>;
+    { s.template execute_with_contraint<MetricType::EUCLIDEAN>(D, A, B, n, m, dim) } -> std::same_as<void>;
     { s.extract_result(D) } -> std::convertible_to<std::pair<double, std::vector<std::pair<int, int>>>>;
     { s.name() } -> std::convertible_to<std::string_view>;
     { s.is_parallel() } -> std::convertible_to<bool>;
@@ -109,8 +109,15 @@ dtw-accelerator/
 │   ├── test_distance_metrics.cpp
 │   ├── test_constraints.cpp
 │   └── performance/
-│       ├── benchmark_strategies.cpp
+│       ├── benchmark_comprehensive.cpp
+│       ├── plot_results.py
 │       └── benchmark_scaling.cpp
+├── build.sh
+├── run_benchmarks.sh
+├── run_unit_tests.sh
+├── setup_python.sh
+├── run_scaling.sh
+├── ReadMe.md
 └── CMakeLists.txt
 ```
 
@@ -119,7 +126,8 @@ dtw-accelerator/
 ### Requirements
 
 - C++20 compatible compiler (GCC 10+, Clang 12+, MSVC 2019+)
-- CMake 3.20 or higher
+- CMake 3.26 or higher (between 3.26 and 4.0.0 if using Clion) 
+- Python 3.10+ (Optional: for benchmarks and visualization)
 
 ```bash
 # Ubuntu/Debian
@@ -163,10 +171,39 @@ sudo apt-get install cuda-toolkit-12-3
 nvcc --version
 nvidia-smi
 ```
-Python Dependencies (for benchmark visualization)
+## 🐍 Python Environment Setup (Optional: only for benchmarks)
+
+The project includes Python scripts for benchmark visualization and analysis. Follow these steps to set up the Python environment:
+
+### Quick Setup
 ```bash
-pip install pandas matplotlib numpy
+# Run the setup script (creates virtual environment and installs dependencies)
+chmod +x setup_python.sh
+./setup_python.sh
+
+# Activate the environment
+source dtw_env/bin/activate
+
+# When done, deactivate
+deactivate
 ```
+### Manual Setup
+If you prefer to set up the environment manually:
+```bash
+# Create virtual environment
+python3 -m venv dtw_env
+
+# Activate environment
+source dtw_env/bin/activate
+
+# Install required packages
+pip install --upgrade pip
+pip install numpy pandas matplotlib seaborn
+
+# Deactivate when done
+deactivate
+```
+
 
 ## ⚙️ Building the Project
 
@@ -180,7 +217,7 @@ git clone https://github.com/UobinoPino/DTW-Accelerator.git
 cd dtw-accelerator
 
 # Make scripts executable
-chmod +x build.sh run_benchmarks.sh run_unit_tests.sh
+chmod +x build.sh run_fair_benchmarks.sh run_unit_tests.sh
 
 # Build the entire project
 ./build.sh
@@ -189,7 +226,7 @@ chmod +x build.sh run_benchmarks.sh run_unit_tests.sh
 ./run_unit_tests.sh
 
 # Run comprehensive benchmarks and generate plots
-./run_benchmarks.sh
+./run_fair_benchmarks.sh
 ```
 
 ### Manual Build with CMake

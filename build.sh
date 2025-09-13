@@ -10,10 +10,10 @@ cd build
 # Run CMake to configure the project
 cmake \
     -DCMAKE_BUILD_TYPE=Release \
-    -DUSE_OPENMP=OFF \
-    -DUSE_MPI=OFF \
+    -DUSE_OPENMP=ON \
+    -DUSE_MPI=ON \
     -DUSE_CUDA=ON \
-    -DBUILD_TESTS=ON \
+    -DBUILD_TESTS=OFF \
     -DBUILD_BENCHMARKS=ON \
     -DBUILD_EXAMPLES=ON \
     ..

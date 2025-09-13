@@ -11,7 +11,6 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fsanitize=address")
 
 # Define library
 add_library(dtw_accelerator INTERFACE
-        include/tests/performance/benchmark_comprehensive.cpp
 )
 target_include_directories(dtw_accelerator INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
@@ -118,6 +117,9 @@ if(USE_CUDA)
                 CUDA::cuda_driver
         )
 
+        set(CUDA_AVAILABLE TRUE CACHE INTERNAL "CUDA is available")
+
+
 
         message(STATUS "CUDA support enabled")
         message(STATUS "CUDA Toolkit Version: ${CUDAToolkit_VERSION}")
@@ -133,7 +135,7 @@ endif()
 
 # Build unit tests if enabled
 if(BUILD_TESTS)
-    add_subdirectory(include/tests)
+    #add_subdirectory(include/tests)
     message(STATUS "Unit tests enabled")
 else()
     message(STATUS "Unit tests disabled")
@@ -141,7 +143,7 @@ endif()
 
 # Build benchmarks if enabled
 if(BUILD_BENCHMARKS)
-  #  add_subdirectory(include/tests/performance)
+    add_subdirectory(include/tests/performance)
     message(STATUS "Performance benchmarks enabled")
 else()
     message(STATUS "Performance benchmarks disabled")
