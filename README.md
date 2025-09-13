@@ -470,31 +470,16 @@ Running Unit Tests
 # Using the convenience script
 ./run_unit_tests.sh
 
-# Or manually
-cd build
-ctest --output-on-failure
-
-# Run specific test
-./include/tests/test_core
-./include/tests/test_strategies
-./include/tests/test_distance_metrics
-./include/tests/test_constraints
 ```
 
 Running Benchmarks
 ```bash
 # Complete benchmark suite with visualization
-./run_benchmarks.sh
+./run_fair_benchmarks.sh
 
 # Without MPI (if not installed)
-./run_benchmarks.sh --no-mpi
+./run_fair_benchmarks.sh --no-mpi
 
-# Manual benchmark execution
-cd build/include/tests/performance
-./benchmark_comprehensive
-
-# Generate plots from results
-python3 plot_results.py
 ```
 
 The benchmark suite will:
@@ -502,7 +487,7 @@ The benchmark suite will:
 - Test all available backends, 
 - Compare performance across different problem sizes
 - Generate performance plots in benchmark_plots/ directory
-- Create a detailed report with speedup analysis
+- Create a summary report with speedup analysis
 
 
 ## 📊 Performance Characteristics
