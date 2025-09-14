@@ -47,6 +47,36 @@ add_custom_target(run_unit_tests
         COMMENT "Running unit tests"
 )
 
+# Add test executable
+add_executable(test_auto_strategy test_auto_strategy.cpp)
+
+target_link_libraries(test_auto_strategy PRIVATE
+        dtw_accelerator
+)
+# Add compile definitions based on available features
+if(USE_OPENMP)
+    target_compile_definitions(test_auto_strategy PRIVATE USE_OPENMP)
+endif()
+
+if(USE_MPI)
+    target_compile_definitions(test_auto_strategy PRIVATE USE_MPI)
+endif()
+
+if(USE_CUDA)
+    target_compile_definitions(test_auto_strategy PRIVATE USE_CUDA)
+endif()
+
+# Register as a test
+add_test(NAME test_auto_strategy COMMAND test_auto_strategy)
+
+# Add custom target to run just this test
+add_custom_target(run_auto_test
+        COMMAND test_auto_strategy
+        DEPENDS test_auto_strategy
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMENT "Running AutoStrategy validation test"
+)
+
 # Add performance subdirectory if benchmarks are enabled
 if(BUILD_BENCHMARKS)
     add_subdirectory(performance)

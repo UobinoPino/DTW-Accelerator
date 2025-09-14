@@ -84,6 +84,32 @@ namespace cuda {
             D.resize(1, 1, 0.0);
         }
 
+        template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                 distance::MetricType M = distance::MetricType::EUCLIDEAN>
+        void execute_with_constraint(DoubleMatrix& D,
+                                     const DoubleTimeSeries& A,
+                                     const DoubleTimeSeries& B,
+                                     int n, int m, int dim,
+                                     const execution::WindowConstraint* window = nullptr) const {
+
+            // Se i problemi sono piccoli o se è richiesta una constraint diversa da NONE,
+            // usiamo il fallback sequenziale (che supporta i vincoli).
+            if (n < 100 || m < 100 || CT != constraints::ConstraintType::NONE) {
+                execution::SequentialStrategy seq_strategy;
+                seq_strategy.initialize_matrix(D, n, m);
+                seq_strategy.template execute_with_constraint<CT, R, S, M>(D, A, B, n, m, dim, window);
+                // Aggiorna la cache del percorso usando le utility CPU
+                last_path_ = utils::backtrack_path(D);
+                return;
+            }
+                  // Altrimenti esegui CUDA
+            ensure_device_initialized();
+            auto result = dtw_cuda_impl(A, B, M, tile_size_);
+            D.resize(n + 1, m + 1, std::numeric_limits<double>::infinity());
+            D(n, m) = result.distance;
+            last_path_ = std::move(result.path);
+        }
+
 
         /**
          * @brief Execute DTW computation on GPU and return result

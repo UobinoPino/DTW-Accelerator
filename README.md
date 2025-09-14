@@ -109,14 +109,17 @@ dtw-accelerator/
 │   ├── test_distance_metrics.cpp
 │   ├── test_constraints.cpp
 │   └── performance/
-│       ├── benchmark_comprehensive.cpp
-│       ├── plot_results.py
+│       ├── benchmark_cuda_only.cpp
+│       ├── benchmark_mpi_only.cpp
+│       ├── benchmark_openmp_only.cpp
+│       ├── benchmark_sequential_pure.cpp
+│       ├── plot_results_updated.py
 │       └── benchmark_scaling.cpp
 ├── build.sh
-├── run_benchmarks.sh
+├── run_fair_benchmarks.sh
 ├── run_unit_tests.sh
+├── run_auto_test.sh
 ├── setup_python.sh
-├── run_scaling.sh
 ├── ReadMe.md
 └── CMakeLists.txt
 ```
@@ -246,6 +249,8 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 # Build
 make -j$(nproc)
 
+# Run tests
+ctest --output-on-failure
 
 # Install (optional)
 sudo make install
@@ -382,33 +387,202 @@ int main() {
 The AutoStrategy class implements intelligent backend selection based on problem characteristics:
 ```cpp
 class AutoStrategy : public BaseStrategy<AutoStrategy> {
-    void select_strategy() const {
-        #ifdef USE_CUDA
-        if (n_ >= 1000 && m_ >= 1000 && cuda::is_available()) {
-            // Use CUDA for large problems
-            strategy_ = std::make_unique<CUDAStrategy>();
-            return;
-        }
-        #endif
-        
-        #ifdef USE_OPENMP
-        if (n_ >= 100 && m_ >= 100) {
-            // Use OpenMP for medium problems
-            strategy_ = std::make_unique<OpenMPStrategy>();
-            return;
-        }
-        #endif
-        
-        if (n_ >= 50 && m_ >= 50) {
-            // Use blocked strategy for cache optimization
-            strategy_ = std::make_unique<BlockedStrategy>();
-            return;
-        }
-        
-        // Default to sequential for small problems
-        strategy_ = std::make_unique<SequentialStrategy>();
-    }
-};
+        private:
+            /// @brief Problem dimensions for strategy selection
+            int n_, m_;
+
+            /// @brief Selected strategy name for reporting
+            mutable std::string_view selected_name_;
+
+            /// @brief Flag for parallel execution
+            mutable bool is_parallel_;
+
+            /// @brief Strategy variant to hold any strategy type
+            using StrategyVariant = std::variant<
+                    SequentialStrategy,
+                    BlockedStrategy
+#ifdef USE_OPENMP
+                    , OpenMPStrategy
+#endif
+#ifdef USE_MPI
+                    , MPIStrategy
+#endif
+#ifdef USE_CUDA
+                    , parallel::cuda::CUDAStrategy
+#endif
+            >;
+
+            /// @brief The actual selected strategy
+            mutable std::unique_ptr<StrategyVariant> strategy_;
+
+            /**
+             * @brief Select appropriate strategy based on problem size
+             *
+             * This method implements the heuristics for automatic
+             * strategy selection. Called lazily on first use.
+             */
+            void select_strategy() const {
+                if (strategy_) return;  // Already selected
+
+#ifdef USE_CUDA
+                // Check CUDA availability for large problems
+                if (n_ >= 1000 && m_ >= 1000) {
+                    try {
+                        if (parallel::cuda::CUDAStrategy::is_available()) {
+                            strategy_ = std::make_unique<StrategyVariant>(
+                                parallel::cuda::CUDAStrategy(256)  // Default tile size
+                            );
+                            selected_name_ = "CUDA-Auto";
+                            is_parallel_ = true;
+                            return;
+                        }
+                    } catch (...) {
+                        // CUDA initialization failed, fall through to next option
+                    }
+                }
+#endif
+
+#ifdef USE_MPI
+                // Check for MPI - typically not auto-selected unless explicitly in MPI context
+                // MPI requires special initialization, so we generally don't auto-select it
+                // unless we detect we're already in an MPI environment
+                int flag = 0;
+                MPI_Initialized(&flag);
+                if (flag && n_ >= 500 && m_ >= 500) {
+                    int size;
+                    MPI_Comm_size(MPI_COMM_WORLD, &size);
+                    if (size > 1) {  // Only use MPI if we have multiple processes
+                        strategy_ = std::make_unique<StrategyVariant>(
+                            MPIStrategy(64, 0, MPI_COMM_WORLD)
+                        );
+                        selected_name_ = "MPI-Auto";
+                        is_parallel_ = true;
+                        return;
+                    }
+                }
+#endif
+
+#ifdef USE_OPENMP
+                // Use OpenMP for medium to large problems
+                if (n_ >= 100 && m_ >= 100) {
+                    int num_threads = omp_get_max_threads();
+                    if (num_threads > 1) {  // Only use if we have multiple threads available
+                        strategy_ = std::make_unique<StrategyVariant>(
+                            OpenMPStrategy(0, 64)  // 0 means auto-detect threads
+                        );
+                        selected_name_ = "OpenMP-Auto";
+                        is_parallel_ = true;
+                        return;
+                    }
+                }
+#endif
+
+                // For medium problems, use blocked strategy for cache optimization
+                if (n_ >= 50 && m_ >= 50) {
+                    strategy_ = std::make_unique<StrategyVariant>(
+                            BlockedStrategy(64)
+                    );
+                    selected_name_ = "Blocked-Auto";
+                    is_parallel_ = false;
+                    return;
+                }
+
+                // Default to sequential for small problems
+                strategy_ = std::make_unique<StrategyVariant>(SequentialStrategy{});
+                selected_name_ = "Sequential-Auto";
+                is_parallel_ = false;
+            }
+
+        public:
+            /**
+             * @brief Construct auto-strategy with problem dimensions
+             * @param n First series length
+             * @param m Second series length
+             */
+            explicit AutoStrategy(int n = 0, int m = 0)
+                    : n_(n), m_(m), selected_name_("Unknown"), is_parallel_(false) {}
+
+            /**
+             * @brief Initialize DTW matrix
+             * @param D Matrix to initialize
+             * @param n Number of rows
+             * @param m Number of columns
+             */
+            void initialize_matrix(DoubleMatrix& D, int n, int m) const {
+                // Update dimensions if they were not set in constructor
+
+
+                select_strategy();
+
+                std::visit([&D, n, m](auto& strategy) {
+                    strategy.initialize_matrix(D, n, m);
+                }, *strategy_);
+            }
+
+            /**
+             * @brief Execute DTW computation with constraints
+             * @tparam CT Constraint type
+             * @tparam R Sakoe-Chiba radius
+             * @tparam S Itakura slope
+             * @tparam M Distance metric type
+             * @param D Cost matrix
+             * @param A First time series
+             * @param B Second time series
+             * @param n Series A length
+             * @param m Series B length
+             * @param dim Dimensions per point
+             * @param window Optional window constraint
+             */
+            template<constraints::ConstraintType CT, int R = 1, double S = 2.0,
+                    distance::MetricType M = distance::MetricType::EUCLIDEAN>
+            void execute_with_constraint(DoubleMatrix& D,
+                                         const DoubleTimeSeries& A,
+                                         const DoubleTimeSeries& B,
+                                         int n, int m, int dim,
+                                         const WindowConstraint* window = nullptr) const {
+                // Update dimensions if needed
+
+
+                select_strategy();
+
+                std::visit([&](auto& strategy) {
+                    strategy.template execute_with_constraint<CT, R, S, M>(
+                            D, A, B, n, m, dim, window);
+                }, *strategy_);
+            }
+
+            /**
+             * @brief Extract result from the cost matrix
+             * @param D Computed cost matrix
+             * @return Pair of (distance, path)
+             */
+            std::pair<double, std::vector<std::pair<int, int>>>
+            extract_result(const DoubleMatrix& D) const {
+                select_strategy();
+
+                return std::visit([&D](auto& strategy) {
+                    return strategy.extract_result(D);
+                }, *strategy_);
+            }
+
+            /**
+             * @brief Get the name of the selected strategy
+             * @return Strategy name
+             */
+            std::string_view name() const {
+                select_strategy();
+                return selected_name_;
+            }
+
+            /**
+             * @brief Check if selected strategy uses parallel execution
+             * @return True if parallel
+             */
+            bool is_parallel() const {
+                select_strategy();
+                return is_parallel_;
+            }
+        };
 ```
 
 ## 🔧 Advanced Features Examples
@@ -470,6 +644,13 @@ Running Unit Tests
 # Using the convenience script
 ./run_unit_tests.sh
 
+# Or manually
+
+# Run specific test
+./include/tests/test_core
+./include/tests/test_strategies
+./include/tests/test_distance_metrics
+./include/tests/test_constraints
 ```
 
 Running Benchmarks
@@ -480,6 +661,15 @@ Running Benchmarks
 # Without MPI (if not installed)
 ./run_fair_benchmarks.sh --no-mpi
 
+# Manual benchmark execution
+cd build/include/tests/performance
+./benchmark_cuda_only
+./benchmark_mpi_only
+./benchmark_openmp_only
+./benchmark_sequential_pure
+
+# Generate plots from results
+python3 plot_results.py
 ```
 
 The benchmark suite will:
@@ -487,7 +677,7 @@ The benchmark suite will:
 - Test all available backends, 
 - Compare performance across different problem sizes
 - Generate performance plots in benchmark_plots/ directory
-- Create a summary report with speedup analysis
+- Create a detailed report with speedup analysis
 
 
 ## 📊 Performance Characteristics

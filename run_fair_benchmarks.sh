@@ -2,6 +2,9 @@
 # Fair DTW Benchmarking Script
 # Runs separated benchmarks to avoid cross-contamination between parallel libraries
 
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -242,8 +245,11 @@ if [ ! -f "dtw_baseline_sequential.csv" ]; then
 fi
 
 echo -e "${BLUE}Generating plots and analysis...${NC}"
-python3 /mnt/c/Users/Francoo/CLionProjects/DTW-ACCELERATOR/include/tests/performance/plot_results_updated.py
-
+#python3 /mnt/c/Users/Francoo/CLionProjects/DTW-ACCELERATOR/include/tests/performance/plot_results_updated.py
+PLOT_DIR="$ROOT_DIR/include/tests/performance"
+PLOT_SCRIPT="$PLOT_DIR/plot_results_updated.py"
+python3 "$PLOT_SCRIPT"
+w
 if [ $? -eq 0 ]; then
     echo ""
     echo -e "${GREEN}========================================${NC}"

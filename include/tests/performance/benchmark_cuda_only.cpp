@@ -28,7 +28,7 @@ using namespace std::chrono;
 
 struct BenchmarkConfig {
     std::vector<int> problem_sizes;
-    std::vector<int> tile_sizes = {32, 64, 128, 256, 512};  // CUDA tile sizes
+    std::vector<int> tile_sizes = {32, 64, 128, 256, 512, 1024, 2048};  // CUDA tile sizes
     int dimensions = 3;
     int num_runs = 3;
     int fastdtw_radius = 2;

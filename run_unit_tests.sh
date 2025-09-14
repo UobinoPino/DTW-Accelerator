@@ -8,12 +8,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-BIN_DIR="/mnt/c/Users/Francoo/CLionProjects/DTW-ACCELERATOR/build/include/tests"
+#BIN_DIR="/mnt/c/Users/Francoo/CLionProjects/DTW-ACCELERATOR/build/include/tests"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+BUILD_DIR="${SCRIPT_DIR}/build"
+BIN_DIR="${BUILD_DIR}/include/tests"
 TESTS=( "test_core" "test_distance_metrics" "test_strategies" "test_constraints" )
 
 echo "======================================"
 echo "DTW Accelerator Unit Test Suite"
-echo "Directory dei test: $BIN_DIR"
+echo "Test directory: $BIN_DIR"
 echo "======================================"
 echo ""
 

@@ -135,7 +135,7 @@ endif()
 
 # Build unit tests if enabled
 if(BUILD_TESTS)
-    #add_subdirectory(include/tests)
+    add_subdirectory(include/tests)
     message(STATUS "Unit tests enabled")
 else()
     message(STATUS "Unit tests disabled")
