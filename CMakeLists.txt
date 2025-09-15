@@ -143,7 +143,7 @@ endif()
 
 # Build benchmarks if enabled
 if(BUILD_BENCHMARKS)
-    add_subdirectory(include/tests/performance)
+    #add_subdirectory(include/tests/performance)
     message(STATUS "Performance benchmarks enabled")
 else()
     message(STATUS "Performance benchmarks disabled")

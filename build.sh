@@ -13,7 +13,7 @@ cmake \
     -DUSE_OPENMP=ON \
     -DUSE_MPI=ON \
     -DUSE_CUDA=ON \
-    -DBUILD_TESTS=OFF \
+    -DBUILD_TESTS=ON \
     -DBUILD_BENCHMARKS=ON \
     -DBUILD_EXAMPLES=ON \
     ..
