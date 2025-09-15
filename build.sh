@@ -15,7 +15,6 @@ cmake \
     -DUSE_CUDA=ON \
     -DBUILD_TESTS=ON \
     -DBUILD_BENCHMARKS=ON \
-    -DBUILD_EXAMPLES=ON \
     ..
 
 # Compile the project using all available CPU cores

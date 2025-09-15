@@ -143,47 +143,6 @@ public:
 #endif
     }
 
-    void benchmark_memory_transfer() {
-#ifdef USE_CUDA
-        if (!cuda_available) {
-            return;
-        }
-
-        std::cout << "\n======== CUDA MEMORY TRANSFER ANALYSIS ========\n";
-        std::cout << std::left << std::setw(10) << "Size"
-                  << std::setw(15) << "H2D Time (ms)"
-                  << std::setw(15) << "Compute (ms)"
-                  << std::setw(15) << "D2H Time (ms)"
-                  << std::setw(15) << "Total (ms)"
-                  << std::setw(15) << "Compute %"
-                  << std::endl;
-        std::cout << std::string(85, '-') << std::endl;
-
-        // Test memory transfer overhead for different sizes
-        for (int size : config.problem_sizes) {
-            auto A = generate_series(size, config.dimensions, 50);
-            auto B = generate_series(size, config.dimensions, 51);
-
-            // Measure with detailed timing (if supported by CUDA implementation)
-            double total_time = measure_time([&]() {
-                auto result = cuda::dtw_cuda<distance::MetricType::EUCLIDEAN>(
-                    A, B, 64);
-            }, config.num_runs);
-
-            // For now, just show total time
-            // In a real implementation, you'd measure H2D, compute, and D2H separately
-            std::cout << std::left << std::setw(10) << size
-                      << std::setw(15) << "N/A"
-                      << std::setw(15) << "N/A"
-                      << std::setw(15) << "N/A"
-                      << std::fixed << std::setprecision(2)
-                      << std::setw(15) << total_time
-                      << std::setw(15) << "N/A"
-                      << std::endl;
-        }
-#endif
-    }
-
     void save_results(const std::string& filename) {
         std::ofstream file(filename);
         if (!file.is_open()) {
@@ -232,7 +191,6 @@ public:
         std::cout << "========================================\n";
 
         benchmark_no_constraints();
-        benchmark_memory_transfer();
 
         save_results("dtw_benchmark_cuda.csv");
 #else

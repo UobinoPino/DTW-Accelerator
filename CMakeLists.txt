@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -mtune=native -funroll-loops -fprefetch-loop-arrays")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g -fsanitize=address")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 
 # Define library
 add_library(dtw_accelerator INTERFACE
@@ -20,7 +20,6 @@ option(USE_MPI "Enable MPI support" ON)
 option(USE_CUDA "Enable CUDA support" ON)
 option(BUILD_TESTS "Build unit tests" ON)
 option(BUILD_BENCHMARKS "Build performance benchmarks" ON)
-option(BUILD_EXAMPLES "Build example programs" ON)
 
 find_package(GTest REQUIRED)
 include_directories(${GTEST_INCLUDE_DIRS})
