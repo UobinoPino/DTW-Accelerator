@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.26)
 
 
 # Find GTest package
@@ -79,7 +79,7 @@ add_custom_target(run_auto_test
 
 # Add performance subdirectory if benchmarks are enabled
 if(BUILD_BENCHMARKS)
-    add_subdirectory(performance)
+   # add_subdirectory(performance)
 endif()
 
 # Install test executables (optional)

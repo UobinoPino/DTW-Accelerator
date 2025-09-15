@@ -3,7 +3,7 @@
 # Runs separated benchmarks to avoid cross-contamination between parallel libraries
 
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Colors for output
 RED='\033[0;31m'

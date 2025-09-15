@@ -29,7 +29,7 @@ using namespace std::chrono;
 struct BenchmarkConfig {
     std::vector<int> problem_sizes;
     int dimensions = 3;
-    int num_runs = 3;
+    int num_runs = 2;
     int fastdtw_radius = 2;
     int fastdtw_min_size = 100;
 };

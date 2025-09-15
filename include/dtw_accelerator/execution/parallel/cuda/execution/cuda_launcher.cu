@@ -1,3 +1,14 @@
+/**
+ * @file cuda_launcher.cu
+ * @brief CUDA kernel launcher implementation for DTW algorithms
+ * @author UobinoPino
+ * @date 2024
+ *
+ * This file implements the host-side launcher functions that configure
+ * and launch CUDA kernels for DTW computations. It handles memory transfers,
+ * kernel configuration, and result retrieval.
+ */
+
 #include "cuda_launcher.hpp"
 #include "../core/cuda_memory.hpp"
 #include "../kernels/matrix_kernels.cuh"
@@ -13,6 +24,20 @@ namespace dtw_accelerator {
 
             using memory::DeviceBuffer;
 
+            /**
+             * @brief Template implementation of CUDA DTW computation
+             * @tparam M Distance metric type
+             * @param A First time series
+             * @param B Second time series
+             * @param tile_size Size of tiles for blocked processing
+             * @return DTW result containing distance and optimal path
+             *
+             * This function orchestrates the entire CUDA DTW computation:
+             * 1. Allocates device memory
+             * 2. Transfers data to GPU
+             * 3. Launches kernels in wavefront order
+             * 4. Retrieves results from GPU
+             */
             template<distance::MetricType M>
             DTWResult dtw_cuda_impl_template(
                     const DoubleTimeSeries& A,
@@ -114,6 +139,17 @@ namespace dtw_accelerator {
                 return {final_distance, std::move(path)};
             }
 
+            /**
+             * @brief Main CUDA DTW implementation dispatcher
+             * @param A First time series
+             * @param B Second time series
+             * @param metric Distance metric to use
+             * @param tile_size Size of tiles for blocked processing
+             * @return DTW result containing distance and optimal path
+             *
+             * Dispatches to the appropriate template instantiation based
+             * on the runtime metric selection.
+             */
             DTWResult dtw_cuda_impl(
                     const DoubleTimeSeries& A,
                     const DoubleTimeSeries& B,
@@ -134,12 +170,20 @@ namespace dtw_accelerator {
                 }
             }
 
+            /**
+             * @brief Check if CUDA is available on the system
+             * @return True if at least one CUDA device is available
+             */
             bool is_cuda_available() {
                 int device_count = 0;
                 cudaError_t error = cudaGetDeviceCount(&device_count);
                 return error == cudaSuccess && device_count > 0;
             }
 
+            /**
+             * @brief Get information about available CUDA devices
+             * @return String containing device properties and capabilities
+             */
             std::string get_cuda_device_info() {
                 int device_count = 0;
                 cudaGetDeviceCount(&device_count);
@@ -168,3 +212,4 @@ namespace dtw_accelerator {
         } // namespace cuda
     } // namespace parallel
 } // namespace dtw_accelerator
+

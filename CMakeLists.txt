@@ -100,7 +100,7 @@ if(USE_CUDA)
 
         set_target_properties(dtw_cuda_kernels PROPERTIES
                 CUDA_SEPARABLE_COMPILATION ON
-                CUDA_ARCHITECTURES "52;60;70;75;80;86"
+                CUDA_ARCHITECTURES "native"
                 POSITION_INDEPENDENT_CODE ON
         )
 
@@ -143,7 +143,7 @@ endif()
 
 # Build benchmarks if enabled
 if(BUILD_BENCHMARKS)
-    #add_subdirectory(include/tests/performance)
+    add_subdirectory(include/tests/performance)
     message(STATUS "Performance benchmarks enabled")
 else()
     message(STATUS "Performance benchmarks disabled")

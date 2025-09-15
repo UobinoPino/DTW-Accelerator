@@ -30,8 +30,8 @@ using namespace std::chrono;
 struct BenchmarkConfig {
     std::vector<int> problem_sizes;
     int dimensions = 3;
-    int num_runs = 3;
-    int block_size = 64;
+    int num_runs = 2;
+    int block_size = 128;
     int fastdtw_radius = 2;
     int fastdtw_min_size = 100;
 };
@@ -112,7 +112,7 @@ public:
 #endif
 
         // Initialize problem sizes
-        for (int exp = 8; exp <= 15; ++exp) {
+        for (int exp = 8; exp <= 14; ++exp) {
             config.problem_sizes.push_back(1 << exp);  // 2^exp
         }
     }

@@ -73,7 +73,55 @@ namespace dtw_accelerator {
             mutable int cached_size_ = -1;
 
             /**
-             * @brief Broadcast block boundaries between processes
+             * @brief Check if a cell is within the Itakura parallelogram
+             * @tparam S Slope parameter
+             * @param i Row index (0-based)
+             * @param j Column index (0-based)
+             * @param n Number of rows
+             * @param m Number of columns
+             * @return True if cell is within the parallelogram
+             */
+            template<double S = 2.0>
+            bool is_within_itakura(int i, int j, int n, int m) const {
+                if (n <= 1 || m <= 1) return true;
+
+                double di = static_cast<double>(i);
+                double dj = static_cast<double>(j);
+                double dn = static_cast<double>(n - 1);
+                double dm = static_cast<double>(m - 1);
+
+                if (dn <= 0 || dm <= 0) return true;
+
+                double ni = di / dn;
+                double nj = dj / dm;
+
+                double lower_bound = std::max(ni / S, S * ni - (S - 1.0));
+                double upper_bound = std::min(S * ni, ni / S + (1.0 - 1.0/S));
+
+                return nj >= lower_bound && nj <= upper_bound;
+            }
+
+            /**
+             * @brief Check if a cell is within the Sakoe-Chiba band
+             * @tparam R Band radius
+             * @param i Row index (0-based)
+             * @param j Column index (0-based)
+             * @param n Number of rows
+             * @param m Number of columns
+             * @return True if cell is within the band
+             */
+            template<int R = 1>
+            bool is_within_sakoe_chiba(int i, int j, int n, int m) const {
+                double ni = static_cast<double>(i) / n;
+                double nj = static_cast<double>(j) / m;
+                return std::abs(ni - nj) * std::max(n, m) <= R;
+            }
+
+            /**
+             * @brief Broadcast block boundaries between processes (constraint-aware)
+             * @tparam CT Constraint type
+             * @tparam R Sakoe-Chiba band radius
+             * @tparam S Itakura parallelogram slope
              * @param D Cost matrix
              * @param bi Block row index
              * @param bj Block column index
@@ -82,10 +130,9 @@ namespace dtw_accelerator {
              * @param owner Process that owns this block
              * @param row_buffer Buffer for row communication
              * @param col_buffer Buffer for column communication
-             *
-             * Exchanges boundary values between processes to maintain
-             * data dependencies across block boundaries.
              */
+            template<constraints::ConstraintType CT = constraints::ConstraintType::NONE,
+                    int R = 1, double S = 2.0>
             void broadcast_block_boundaries(DoubleMatrix& D,
                                             int bi, int bj, int n, int m, int owner,
                                             std::vector<double>& row_buffer,
@@ -94,25 +141,49 @@ namespace dtw_accelerator {
                 int rank = cached_rank_;
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
+                const double INF = std::numeric_limits<double>::infinity();
 
                 // Broadcast last row
                 if (bi < n_blocks - 1) {
                     int i_boundary = std::min((bi + 1) * block_size_, n);
                     int j_start = bj * block_size_;
                     int j_end = std::min((bj + 1) * block_size_, m);
+                    int buffer_size = j_end - j_start + 1;
+
+                    // Initialize buffer with infinity
+                    std::fill(row_buffer.begin(), row_buffer.begin() + buffer_size, INF);
 
                     if (rank == owner) {
                         for (int j = j_start; j <= j_end; ++j) {
-                            row_buffer[j - j_start] = D(i_boundary, j);
+                            // Only access cells that are valid under the constraint
+                            bool valid = true;
+
+                            // Check constraint validity (using 0-based indices for constraint check)
+                            if constexpr (CT == constraints::ConstraintType::ITAKURA) {
+                                valid = is_within_itakura<S>(i_boundary - 1, j - 1, n, m);
+                            } else if constexpr (CT == constraints::ConstraintType::SAKOE_CHIBA) {
+                                valid = is_within_sakoe_chiba<R>(i_boundary - 1, j - 1, n, m);
+                            }
+
+                            if (valid) {
+                                // Only access if the cell was actually computed
+                                double val = D(i_boundary, j);
+                                if (val != INF) {
+                                    row_buffer[j - j_start] = val;
+                                }
+                            }
                         }
                     }
 
-                    MPI_Bcast(row_buffer.data(), j_end - j_start + 1,
+                    MPI_Bcast(row_buffer.data(), buffer_size,
                               MPI_DOUBLE, owner, communicator_);
 
                     if (rank != owner) {
                         for (int j = j_start; j <= j_end; ++j) {
-                            D(i_boundary, j) = row_buffer[j - j_start];
+                            double val = row_buffer[j - j_start];
+                            if (val != INF) {
+                                D(i_boundary, j) = val;
+                            }
                         }
                     }
                 }
@@ -122,19 +193,42 @@ namespace dtw_accelerator {
                     int j_boundary = std::min((bj + 1) * block_size_, m);
                     int i_start = bi * block_size_;
                     int i_end = std::min((bi + 1) * block_size_, n);
+                    int buffer_size = i_end - i_start + 1;
+
+                    // Initialize buffer with infinity
+                    std::fill(col_buffer.begin(), col_buffer.begin() + buffer_size, INF);
 
                     if (rank == owner) {
                         for (int i = i_start; i <= i_end; ++i) {
-                            col_buffer[i - i_start] = D(i, j_boundary);
+                            // Only access cells that are valid under the constraint
+                            bool valid = true;
+
+                            // Check constraint validity (using 0-based indices for constraint check)
+                            if constexpr (CT == constraints::ConstraintType::ITAKURA) {
+                                valid = is_within_itakura<S>(i - 1, j_boundary - 1, n, m);
+                            } else if constexpr (CT == constraints::ConstraintType::SAKOE_CHIBA) {
+                                valid = is_within_sakoe_chiba<R>(i - 1, j_boundary - 1, n, m);
+                            }
+
+                            if (valid) {
+                                // Only access if the cell was actually computed
+                                double val = D(i, j_boundary);
+                                if (val != INF) {
+                                    col_buffer[i - i_start] = val;
+                                }
+                            }
                         }
                     }
 
-                    MPI_Bcast(col_buffer.data(), i_end - i_start + 1,
+                    MPI_Bcast(col_buffer.data(), buffer_size,
                               MPI_DOUBLE, owner, communicator_);
 
                     if (rank != owner) {
                         for (int i = i_start; i <= i_end; ++i) {
-                            D(i, j_boundary) = col_buffer[i - i_start];
+                            double val = col_buffer[i - i_start];
+                            if (val != INF) {
+                                D(i, j_boundary) = val;
+                            }
                         }
                     }
                 }
@@ -189,14 +283,14 @@ namespace dtw_accelerator {
                 if (size == 1) {
 #ifdef USE_OPENMP
                     if (threads_per_process_ > 0) {
-                OpenMPStrategy omp_strat(threads_per_process_, block_size_);
-                omp_strat.template execute_with_constraint<CT, R, S, M>(
-                    D, A, B, n, m, dim, window);
-            } else {
-                BlockedStrategy blocked(block_size_);
-                blocked.template execute_with_constraint<CT, R, S, M>(
-                    D, A, B, n, m, dim, window);
-            }
+                        OpenMPStrategy omp_strat(threads_per_process_, block_size_);
+                        omp_strat.template execute_with_constraint<CT, R, S, M>(
+                            D, A, B, n, m, dim, window);
+                    } else {
+                        BlockedStrategy blocked(block_size_);
+                        blocked.template execute_with_constraint<CT, R, S, M>(
+                            D, A, B, n, m, dim, window);
+                    }
 #else
                     BlockedStrategy blocked(block_size_);
                     blocked.template execute_with_constraint<CT, R, S, M>(
@@ -207,17 +301,18 @@ namespace dtw_accelerator {
 
 #ifdef USE_OPENMP
                 if (threads_per_process_ > 0) {
-            omp_set_num_threads(threads_per_process_);
-        }
+                    omp_set_num_threads(threads_per_process_);
+                }
 #endif
 
                 int n_blocks = (n + block_size_ - 1) / block_size_;
                 int m_blocks = (m + block_size_ - 1) / block_size_;
 
-                // Pre-allocate communication buffers
-                const int buffer_size = std::max(m + 1, n + 1) + 100;
-                std::vector<double> row_buffer(buffer_size, 0.0);
-                std::vector<double> col_buffer(buffer_size, 0.0);
+                // Pre-allocate communication buffers with safe size
+                const int max_block_dim = block_size_ + 1;
+                const int buffer_size = std::max({m + 1, n + 1, max_block_dim}) + 100;
+                std::vector<double> row_buffer(buffer_size, std::numeric_limits<double>::infinity());
+                std::vector<double> col_buffer(buffer_size, std::numeric_limits<double>::infinity());
 
                 // Process blocks in wavefront order
                 for (int wave = 0; wave < n_blocks + m_blocks - 1; ++wave) {
@@ -250,13 +345,13 @@ namespace dtw_accelerator {
                         }
                     }
 
-                    // Exchange boundaries using MPI_Bcast
+                    // Exchange boundaries using MPI_Bcast with constraint awareness
                     for (int bi = start_bi; bi <= end_bi; ++bi) {
                         int bj = wave - bi;
                         if (bj >= 0 && bj < m_blocks) {
                             int block_owner = (bi - start_bi) % size;
-                            broadcast_block_boundaries(D, bi, bj, n, m, block_owner,
-                                                       row_buffer, col_buffer);
+                            broadcast_block_boundaries<CT, R, S>(D, bi, bj, n, m, block_owner,
+                                                                 row_buffer, col_buffer);
                         }
                     }
                 }

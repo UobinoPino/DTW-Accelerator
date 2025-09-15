@@ -40,7 +40,6 @@ struct TestResult {
     int size_b;
     int dimensions;
     std::string selected_strategy;
-    double dtw_distance;
     double execution_time_ms;
     bool passed;
     std::string error_message;
@@ -95,14 +94,12 @@ TestResult test_auto_strategy(const std::string& test_name,
 
         // Record results
         result.selected_strategy = std::string(strategy.name());
-        result.dtw_distance = dtw_result.first;
         result.execution_time_ms = elapsed.count();
         result.passed = true;
 
         // Validate result
         if (dtw_result.first < 0) {
             result.passed = false;
-            result.error_message = "Negative DTW distance";
         }
         if (dtw_result.second.empty() && size_a > 0 && size_b > 0) {
             result.passed = false;
@@ -150,13 +147,11 @@ TestResult test_auto_strategy_with_constraints(const std::string& test_name,
         duration<double, std::milli> elapsed = end - start;
 
         result.selected_strategy = std::string(strategy.name());
-        result.dtw_distance = dtw_result.first;
         result.execution_time_ms = elapsed.count();
         result.passed = true;
 
         if (dtw_result.first < 0) {
             result.passed = false;
-            result.error_message = "Negative DTW distance with constraints";
         }
 
     } catch (const std::exception& e) {
@@ -199,13 +194,11 @@ TestResult test_fastdtw_auto(const std::string& test_name,
         duration<double, std::milli> elapsed = end - start;
 
         result.selected_strategy = std::string(strategy.name());
-        result.dtw_distance = dtw_result.first;
         result.execution_time_ms = elapsed.count();
         result.passed = true;
 
         if (dtw_result.first < 0) {
             result.passed = false;
-            result.error_message = "Negative FastDTW distance";
         }
 
     } catch (const std::exception& e) {
@@ -230,7 +223,6 @@ void print_result(const TestResult& result) {
     if (result.passed) {
         std::cout << GREEN << std::setw(8) << "PASSED" << RESET;
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << std::setw(12) << result.dtw_distance;
         std::cout << std::setw(10) << result.execution_time_ms << " ms";
     } else {
         std::cout << RED << std::setw(8) << "FAILED" << RESET;
@@ -311,7 +303,6 @@ int main(int argc, char** argv) {
     std::cout << std::setw(12) << "Size";
     std::cout << std::setw(20) << "Selected Strategy";
     std::cout << std::setw(8) << "Status";
-    std::cout << std::setw(12) << "Distance";
     std::cout << std::setw(10) << "Time" << "\n";
     std::cout << std::string(95, '-') << "\n";
 

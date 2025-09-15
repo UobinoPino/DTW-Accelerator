@@ -30,7 +30,7 @@ struct BenchmarkConfig {
     std::vector<int> problem_sizes;
     std::vector<int> thread_counts = {1, 2, 4, 8};
     int dimensions = 3;
-    int num_runs = 3;
+    int num_runs = 2;
     int block_size = 512;
     int fastdtw_radius = 2;
     int fastdtw_min_size = 100;
@@ -97,7 +97,7 @@ private:
 public:
     OpenMPBenchmark() {
         // Initialize problem sizes
-        for (int exp = 8; exp <= 15; ++exp) {
+        for (int exp = 8; exp <= 14; ++exp) {
             config.problem_sizes.push_back(1 << exp);  // 2^exp
         }
     }
