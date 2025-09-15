@@ -256,6 +256,27 @@ ctest --output-on-failure
 sudo make install
 ```
 
+## 🔧 Troubleshooting
+
+### Script Execution Issues (Windows/WSL Users)
+
+If you encounter an error like `/bin/bash^M: bad interpreter: No such file or directory` when running shell scripts, this indicates Windows line endings (CRLF) in the scripts. Convert them to Unix format:
+
+```bash
+# Install dos2unix utility
+sudo apt install dos2unix
+
+# Convert all shell scripts to Unix format
+dos2unix build.sh
+dos2unix run_fair_benchmarks.sh
+dos2unix run_unit_tests.sh
+dos2unix run_auto_test.sh
+dos2unix setup_python.sh
+
+# Make scripts executable
+chmod +x *.sh
+
+```
 ## 🎯 Usage Examples
 ### Layered Interface Approach
 DTW Accelerator provides multiple interface layers, allowing users to choose the appropriate level of control for their needs:
