@@ -102,12 +102,12 @@ dtw-accelerator/
 │   │   ├── dtw_generic.hpp          # Generic DTW algorithm
 │   │   ├── fastdtw_generic.hpp      # FastDTW implementation
 │   └── dtw_accelerator.hpp          # Main header file
-├── tests/
+├── tests/     # Unit tests
 │   ├── test_core.cpp
 │   ├── test_strategies.cpp
 │   ├── test_distance_metrics.cpp
 │   ├── test_constraints.cpp
-│   └── performance/
+│   └── performance/   # Benchmarks
 │       ├── benchmark_cuda_only.cpp
 │       ├── benchmark_mpi_only.cpp
 │       ├── benchmark_openmp_only.cpp
@@ -127,15 +127,11 @@ dtw-accelerator/
 
 ### Requirements
 
-- C++20 compatible compiler (GCC 10+, Clang 12+, MSVC 2019+)
+- C++20 compatible compiler
 - CMake 3.26 or higher (between 3.26 and 4.0.0 if using Clion) 
 - Python 3.10+ (Optional: for benchmarks and visualization)
 
-```bash
-# Ubuntu/Debian
-  sudo apt-get install cmake
-```
-- Optional Dependencies:
+### Dependencies:
   Google Test (for unit tests)
 ```bash
 # Ubuntu/Debian
@@ -247,12 +243,6 @@ cmake .. -DCMAKE_BUILD_TYPE=Release \
 
 # Build
 make -j$(nproc)
-
-# Run tests
-ctest --output-on-failure
-
-# Install (optional)
-sudo make install
 ```
 
 ## 🔧 Troubleshooting
@@ -353,55 +343,6 @@ int main() {
     return 0;
 }
 ```
-### 3. Custom Strategy Injection
-   For specialized requirements, you can implement custom execution strategies:
-
-```cpp
-#include "dtw_accelerator/dtw_accelerator.hpp"
-
-using namespace dtw_accelerator;
-
-// Custom strategy with specialized optimization
-class MyCustomStrategy : public execution::BaseStrategy<MyCustomStrategy> {
-public:
-    template<constraints::ConstraintType CT, int R, double S, 
-             distance::MetricType M>
-    void execute_with_constraint(DoubleMatrix& D,
-                                 const DoubleTimeSeries& A,
-                                 const DoubleTimeSeries& B,
-                                 int n, int m, int dim,
-                                 const WindowConstraint* window) const {
-        // Your custom implementation
-        // For example: SIMD vectorization, custom memory layout, etc.
-        for (int i = 1; i <= n; ++i) {
-            for (int j = 1; j <= m; ++j) {
-                D(i, j) = utils::compute_cell_cost<M>(
-                    A[i-1], B[j-1], dim,
-                    D(i-1, j-1), D(i, j-1), D(i-1, j)
-                );
-            }
-        }
-    }
-    
-    std::string_view name() const { return "MyCustom"; }
-    bool is_parallel() const { return false; }
-};
-
-int main() {
-    DoubleTimeSeries series_a(1000, 3);
-    DoubleTimeSeries series_b(1000, 3);
-    // ... fill with data ...
-    
-    // Use custom strategy
-    MyCustomStrategy custom;
-    auto result = dtw_custom<MetricType::EUCLIDEAN>(
-        series_a, series_b, custom);
-    
-    std::cout << "Result with custom strategy: " << result.first << std::endl;
-    
-    return 0;
-}
-```
 
 ## 🔧 Advanced Features Examples
 
@@ -457,7 +398,7 @@ auto chebyshev = dtw<MetricType::CHEBYSHEV>(series_a, series_b);
 auto cosine = dtw<MetricType::COSINE>(series_a, series_b);
 ```
 ## Testing
-Running Unit Tests
+Running Unit Tests (Be sure to build with -DBUILD_TESTS=ON)
 ```bash
 # Using the convenience script
 ./run_unit_tests.sh
@@ -465,10 +406,10 @@ Running Unit Tests
 # Or manually
 
 # Run specific test
-./include/tests/test_core
-./include/tests/test_strategies
-./include/tests/test_distance_metrics
-./include/tests/test_constraints
+./build/include/tests/test_core
+./build/include/tests/test_strategies
+./build/include/tests/test_distance_metrics
+./build/include/tests/test_constraints
 ```
 
 Running Benchmarks
